@@ -11,3 +11,4 @@ arabic-reshaper>=3.0
 python-bidi>=0.6
 jdatetime>=5.0
 tzdata
+cryptography>=42

@@ -19,7 +19,9 @@ router = APIRouter(prefix="/api", tags=["prices"])
 
 def price_dict(p: m.Price) -> dict:
     return {"id": p.id, "asset_id": p.asset_id, "asset": p.asset.name if p.asset else None, "price": p.price,
-            "currency": p.currency, "recorded_at": p.recorded_at, "source": p.source, "is_approved": p.is_approved, "note": p.note}
+            "currency": p.currency, "recorded_at": p.recorded_at, "source": p.source, "is_approved": p.is_approved,
+            "is_valid": p.is_valid, "validity_note": p.validity_note, "provider_id": p.provider_id,
+            "fetched_at": p.fetched_at, "source_time": p.source_time, "price_kind": p.price_kind, "note": p.note}
 
 
 def fx_dict(r: m.FxRate) -> dict:
@@ -28,13 +30,18 @@ def fx_dict(r: m.FxRate) -> dict:
 
 
 @router.get("/prices")
-def list_prices(asset_id: int | None = None, approved: bool | None = None, limit: int = Query(300, ge=1, le=3000),
+def list_prices(asset_id: int | None = None, approved: bool | None = None, provider_id: int | None = None,
+                valid: bool | None = None, limit: int = Query(300, ge=1, le=3000),
                 db: Session = Depends(get_db)):
     q = select(m.Price).options(joinedload(m.Price.asset)).order_by(m.Price.recorded_at.desc(), m.Price.id.desc()).limit(limit)
     if asset_id:
         q = q.where(m.Price.asset_id == asset_id)
     if approved is not None:
         q = q.where(m.Price.is_approved.is_(approved))
+    if provider_id:
+        q = q.where(m.Price.provider_id == provider_id)
+    if valid is not None:
+        q = q.where(m.Price.is_valid.is_(valid))
     return [price_dict(p) for p in db.scalars(q)]
 
 
@@ -87,8 +94,9 @@ def delete_price(price_id: int, db: Session = Depends(get_db)):
 
 @router.post("/prices/fetch")
 def fetch_prices(asset_id: int | None = None, db: Session = Depends(get_db)):
-    """دریافت خودکار قیمت از منابع پیکربندی‌شده. در صورت ناموفق بودن، سیستم با قیمت دستی ادامه می‌دهد."""
-    return {"results": svc.fetch_all(db, [asset_id] if asset_id else None)}
+    """دریافت قیمت از منابع پیکربندی‌شدهٔ هر دارایی (اصلی ← جایگزین). نتیجهٔ هر دارایی جداگانه گزارش می‌شود."""
+    from ..services.marketdata.engine import get_engine
+    return {"results": get_engine().refresh_all(db, [asset_id] if asset_id else None, force=True)}
 
 
 @router.get("/fx")

@@ -23,12 +23,18 @@ from .repository import sync_plan, tx_rec
 from .seed import seed_defaults
 
 log = logging.getLogger("capitalpilot.backup")
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+SUPPORTED_VERSIONS = (1, 2)
+# ستون‌های محرمانه که هرگز در پشتیبان JSON نوشته نمی‌شوند (کلید API پس از بازیابی باید دوباره وارد شود)
+SECRET_COLUMNS = {"price_providers": {"api_key_enc"}}
 # ترتیب درج (به‌خاطر کلیدهای خارجی)
 TABLES = [
-    ("currencies", m.Currency), ("app_settings", m.AppSettings), ("platforms", m.Platform), ("assets", m.Asset),
-    ("plan_periods", m.PlanPeriod), ("transactions", m.Transaction), ("prices", m.Price), ("fx_rates", m.FxRate),
+    ("currencies", m.Currency), ("app_settings", m.AppSettings), ("asset_types", m.AssetType), ("platforms", m.Platform),
+    ("portfolios", m.Portfolio), ("price_providers", m.PriceProvider), ("assets", m.Asset), ("plan_periods", m.PlanPeriod),
+    ("portfolio_assets", m.PortfolioAsset), ("transactions", m.Transaction), ("prices", m.Price), ("fx_rates", m.FxRate),
+    ("asset_price_sources", m.AssetPriceSource), ("price_fetch_logs", m.PriceFetchLog),
 ]
+V1_TABLES = {"currencies", "app_settings", "platforms", "assets", "plan_periods", "transactions", "prices", "fx_rates"}
 RESET_PHRASE = "پاک‌سازی کامل"
 _tokens: dict[str, tuple[float, str]] = {}
 
@@ -44,7 +50,7 @@ def _ser(v):
 def export_json(db: Session) -> dict:
     tables = {}
     for name, model in TABLES:
-        cols = [c.key for c in inspect(model).mapper.column_attrs]
+        cols = [c.key for c in inspect(model).mapper.column_attrs if c.key not in SECRET_COLUMNS.get(name, set())]
         tables[name] = [{c: _ser(getattr(row, c)) for c in cols} for row in db.scalars(select(model))]
     return {"app": "CapitalPilot", "schema_version": SCHEMA_VERSION, "app_version": __version__,
             "exported_at": now_local().isoformat(), "tables": tables}
@@ -70,7 +76,7 @@ def _parse_value(col, v):
 def validate_backup(data: dict) -> dict[str, list[dict]]:
     if not isinstance(data, dict) or data.get("app") != "CapitalPilot":
         raise ValidationFailure("این فایل، پشتیبان CapitalPilot نیست.")
-    if data.get("schema_version") != SCHEMA_VERSION:
+    if data.get("schema_version") not in SUPPORTED_VERSIONS:
         raise ValidationFailure(f"نسخه فایل پشتیبان ({data.get('schema_version')}) پشتیبانی نمی‌شود.")
     tables = data.get("tables")
     if not isinstance(tables, dict):
@@ -78,6 +84,8 @@ def validate_backup(data: dict) -> dict[str, list[dict]]:
     parsed: dict[str, list[dict]] = {}
     for name, model in TABLES:
         rows = tables.get(name)
+        if rows is None and data.get("schema_version") == 1 and name not in V1_TABLES:
+            rows = []  # پشتیبان نسخهٔ ۱: جدول‌های جدید خالی‌اند و پس از بازیابی ساخته می‌شوند
         if not isinstance(rows, list):
             raise ValidationFailure(f"جدول «{name}» در فایل پشتیبان وجود ندارد.")
         mapper = inspect(model).mapper
@@ -100,8 +108,12 @@ def validate_backup(data: dict) -> dict[str, list[dict]]:
         recs.append(TxRec(r["id"], r["tx_date"], r["tx_type"], r["platform_id"], r.get("asset_id"), r.get("quantity"),
                           r.get("unit_price"), r.get("fee") or Decimal(0), r["total_amount"], r.get("fx_rate"),
                           r.get("plan_period_id")))
+    by_portfolio: dict = {}
+    for r, rec in zip(parsed["transactions"], recs):
+        by_portfolio.setdefault(r.get("portfolio_id"), []).append(rec)
     try:
-        replay(recs)
+        for group in by_portfolio.values():
+            replay(group)
     except LedgerError as e:
         raise ValidationFailure(f"تراکنش‌های فایل پشتیبان ناسازگار است: {e.message}")
     return parsed
@@ -162,13 +174,20 @@ def restore_json(db: Session, data: dict) -> dict:
                 db.add(model(**r))
             db.flush()
         db.commit()
+        if data.get("schema_version") == 1:
+            from ..migrations.steps import backfill_v2
+            backfill_v2(db)
+            db.commit()
     except Exception as e:
         db.rollback()
         log.exception("restore failed")
         if isinstance(e, AppError):
             raise
         raise AppError("بازیابی ناموفق بود و تغییری اعمال نشد. جزئیات در لاگ ثبت شده است.", status_code=500, code="restore_failed")
-    return {"restored": {k: len(v) for k, v in parsed.items()}}
+    out = {"restored": {k: len(v) for k, v in parsed.items()}, "warnings": []}
+    if parsed["price_providers"]:
+        out["warnings"].append("کلیدهای API در پشتیبان نگهداری نمی‌شوند؛ برای منابع قیمت دارای کلید، کلید را دوباره وارد کنید.")
+    return out
 
 
 # ---- پاک‌سازی چندمرحله‌ای ----
@@ -197,7 +216,7 @@ def confirm_reset(db: Session, token: str, phrase: str, scope: str) -> dict:
             db.commit()
             seed_defaults(db)
         else:
-            for model in (m.Transaction, m.Price, m.FxRate):
+            for model in (m.Transaction, m.PriceFetchLog, m.Price, m.FxRate):
                 db.execute(delete(model))
             db.commit()
             sync_plan(db, today_local(), apply_to_past_unpaid=True)

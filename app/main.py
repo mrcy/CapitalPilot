@@ -15,8 +15,9 @@ from . import __version__
 from .config import get_settings
 from .database import Base, SessionLocal, engine
 from .errors import register_error_handlers
+from .migrations import run_migrations
 from .logging_conf import setup_logging
-from .routers import analytics, assets, core, data, prices, reports, transactions
+from .routers import analytics, assets, catalog, core, data, market, portfolios, prices, reports, transactions
 from .services.seed import is_seeded, seed_defaults
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -37,7 +38,9 @@ log = logging.getLogger("capitalpilot")
 
 
 def init_db() -> None:
-    Base.metadata.create_all(engine)
+    info = run_migrations(engine)
+    if info["applied"] and not info["fresh"]:
+        log.info("Database migrated: %s", info)
     s = get_settings()
     if s.seed_on_startup:
         with SessionLocal() as db:
@@ -51,7 +54,14 @@ async def lifespan(app: FastAPI):
     setup_logging()
     init_db()
     log.info("CapitalPilot %s started", __version__)
+    scheduler = None
+    if get_settings().scheduler_enabled:
+        from .services.marketdata.scheduler import get_scheduler
+        scheduler = get_scheduler()
+        scheduler.start()
     yield
+    if scheduler is not None:
+        scheduler.stop()
 
 
 def create_app() -> FastAPI:
@@ -90,7 +100,7 @@ def create_app() -> FastAPI:
             resp.headers["Cache-Control"] = "no-store"
         return resp
 
-    for r in (core, assets, transactions, prices, analytics, reports, data):
+    for r in (core, catalog, assets, portfolios, transactions, prices, market, analytics, reports, data):
         app.include_router(r.router)
 
     @app.get("/api/health", tags=["core"])

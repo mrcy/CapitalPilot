@@ -28,20 +28,21 @@ def _params(date_: date | None, year: int | None, month: int | None, quarter: in
 @router.get("/{key}")
 def get_report(key: str, date: date | None = None, year: int | None = Query(None, ge=1000, le=3000),
                month: int | None = Query(None, ge=1, le=12), quarter: int | None = Query(None, ge=1, le=4),
-               date_from: date | None = None, date_to: date | None = None, db: Session = Depends(get_db)):
+               date_from: date | None = None, date_to: date | None = None, portfolio_id: int | None = None,
+               db: Session = Depends(get_db)):
     if key not in svc.TITLES:
         raise NotFoundError("گزارش یافت نشد.")
-    return svc.build_report(load_dataset(db), key, _params(date, year, month, quarter, date_from, date_to), clock.now_local())
+    return svc.build_report(load_dataset(db, portfolio_id), key, _params(date, year, month, quarter, date_from, date_to), clock.now_local())
 
 
 @router.get("/{key}/export")
 def export_report(key: str, format: str = Query("xlsx", pattern="^(csv|xlsx|pdf)$"), date: date | None = None,
                   year: int | None = Query(None, ge=1000, le=3000), month: int | None = Query(None, ge=1, le=12),
                   quarter: int | None = Query(None, ge=1, le=4), date_from: date | None = None, date_to: date | None = None,
-                  db: Session = Depends(get_db)):
+                  portfolio_id: int | None = None, db: Session = Depends(get_db)):
     if key not in svc.TITLES:
         raise NotFoundError("گزارش یافت نشد.")
-    ds = load_dataset(db)
+    ds = load_dataset(db, portfolio_id)
     report = svc.build_report(ds, key, _params(date, year, month, quarter, date_from, date_to), clock.now_local())
     fn, media, ext = EXPORTERS[format]
     unit = get_settings_row(db).currency_label

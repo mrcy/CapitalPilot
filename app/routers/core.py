@@ -11,28 +11,34 @@ from .. import __version__, models as m
 from ..config import get_settings
 from ..database import get_db
 from ..errors import ConflictError, NotFoundError, ValidationFailure
-from ..schemas import CurrencyIn, PlatformIn, SettingsIn
+from ..schemas import CurrencyIn, SettingsIn
 from ..services import clock
-from ..services.price_providers import available_providers
-from ..services.repository import get_settings_row, sync_plan
+from ..services import catalog
+from ..services.repository import effective_weights, get_default_portfolio, get_settings_row, sync_plan
 
 router = APIRouter(prefix="/api", tags=["core"])
 
 
 def settings_dict(db: Session) -> dict:
+    """تنظیمات عمومی + پارامترهای برنامهٔ سبد پیش‌فرض (سازگار با نسخهٔ ۱)."""
     r = get_settings_row(db)
-    assets = list(db.scalars(select(m.Asset).where(m.Asset.is_active.is_(True)).order_by(m.Asset.sort_order, m.Asset.id)))
-    total_w = sum((a.target_weight for a in assets), Decimal(0))
+    pf = get_default_portfolio(db)
+    members = list(db.scalars(select(m.PortfolioAsset).where(m.PortfolioAsset.portfolio_id == pf.id, m.PortfolioAsset.is_active.is_(True))))
+    live = [pa for pa in members if pa.asset.is_active and not pa.asset.is_archived]
+    eff = effective_weights(pf, live)
+    total_w = sum(eff.values(), Decimal(0))
     return {
-        "initial_capital": r.initial_capital, "monthly_contribution": r.monthly_contribution,
-        "horizon_months": r.horizon_months, "plan_start_date": r.plan_start_date, "max_drawdown_pct": r.max_drawdown_pct,
+        "portfolio_id": pf.id, "portfolio_name": pf.name,
+        "initial_capital": pf.initial_capital, "monthly_contribution": pf.monthly_contribution,
+        "horizon_months": pf.horizon_months, "plan_start_date": pf.plan_start_date, "max_drawdown_pct": pf.max_drawdown_pct,
         "concentration_limit_pct": r.concentration_limit_pct, "deviation_warning_pp": r.deviation_warning_pp,
         "max_price_age_days": r.max_price_age_days, "calendar": r.calendar, "currency_label": r.currency_label,
-        "plan_target_total": r.initial_capital + r.monthly_contribution * r.horizon_months,
-        "allocation_sum": total_w, "allocation_ok": total_w == Decimal(100),
-        "plan_by_asset": [{"asset_id": a.id, "name": a.name, "weight": a.target_weight,
-                           "initial": r.initial_capital * a.target_weight / 100,
-                           "monthly": r.monthly_contribution * a.target_weight / 100} for a in assets],
+        "plan_target_total": pf.initial_capital + pf.monthly_contribution * pf.horizon_months,
+        "allocation_sum": total_w, "allocation_ok": round(total_w, 6) == Decimal(100),
+        "plan_by_asset": [{"asset_id": pa.asset_id, "name": pa.asset.name, "weight": eff.get(pa.asset_id, Decimal(0)),
+                           "initial": pf.initial_capital * eff.get(pa.asset_id, Decimal(0)) / 100,
+                           "monthly": pf.monthly_contribution * eff.get(pa.asset_id, Decimal(0)) / 100} for pa in live],
+        "scheduler_enabled": r.scheduler_enabled,
     }
 
 
@@ -44,9 +50,10 @@ def meta(db: Session = Depends(get_db)):
         "name": s.app_name, "tagline": s.app_tagline, "version": __version__, "now": now, "today": now.date(),
         "timezone": s.app_timezone, "settings": settings_dict(db),
         "currencies": [_cur(c) for c in db.scalars(select(m.Currency).order_by(m.Currency.is_base.desc(), m.Currency.code))],
-        "platforms": [_plat(p) for p in db.scalars(select(m.Platform).order_by(m.Platform.id))],
-        "price_providers": available_providers(),
-        "price_api_enabled": bool(s.allowed_price_hosts),
+        "platforms": [catalog.platform_dict(db, p) for p in db.scalars(select(m.Platform).order_by(m.Platform.sort_order, m.Platform.id))],
+        "asset_types": [catalog.type_dict(db, t) for t in db.scalars(select(m.AssetType).order_by(m.AssetType.sort_order, m.AssetType.key))],
+        "portfolios": [{"id": pf.id, "name": pf.name, "is_default": pf.is_default, "is_archived": pf.is_archived}
+                       for pf in db.scalars(select(m.Portfolio).order_by(m.Portfolio.sort_order, m.Portfolio.id))],
     }
 
 
@@ -58,12 +65,16 @@ def get_app_settings(db: Session = Depends(get_db)):
 @router.put("/settings")
 def update_settings(payload: SettingsIn, db: Session = Depends(get_db)):
     r = get_settings_row(db)
+    pf = get_default_portfolio(db)
     data = payload.model_dump()
     apply_past = data.pop("apply_to_past_unpaid")
+    for k in ("initial_capital", "monthly_contribution", "horizon_months", "max_drawdown_pct"):
+        setattr(pf, k, data.pop(k))
+    pf.plan_start_date = data.pop("plan_start_date")
     for k, v in data.items():
         setattr(r, k, v)
     db.flush()
-    sync_plan(db, clock.today_local(), apply_to_past_unpaid=apply_past)
+    sync_plan(db, clock.today_local(), apply_to_past_unpaid=apply_past, portfolio=pf)
     db.commit()
     return settings_dict(db)
 
@@ -114,31 +125,3 @@ def delete_currency(code: str, db: Session = Depends(get_db)):
     db.delete(c)
     db.commit()
     return {"ok": True}
-
-
-def _plat(p: m.Platform) -> dict:
-    return {"id": p.id, "name": p.name, "kind": p.kind, "is_active": p.is_active, "note": p.note}
-
-
-@router.get("/platforms")
-def list_platforms(db: Session = Depends(get_db)):
-    return [_plat(p) for p in db.scalars(select(m.Platform).order_by(m.Platform.id))]
-
-
-@router.post("/platforms", status_code=201)
-def create_platform(payload: PlatformIn, db: Session = Depends(get_db)):
-    p = m.Platform(**payload.model_dump())
-    db.add(p)
-    db.commit()
-    return _plat(p)
-
-
-@router.put("/platforms/{pid}")
-def update_platform(pid: int, payload: PlatformIn, db: Session = Depends(get_db)):
-    p = db.get(m.Platform, pid)
-    if p is None:
-        raise NotFoundError("پلتفرم یافت نشد.")
-    for k, v in payload.model_dump().items():
-        setattr(p, k, v)
-    db.commit()
-    return _plat(p)

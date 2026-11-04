@@ -37,6 +37,8 @@ class AssetRec:
     buy_fee_rate: Decimal = ZERO
     fractional: bool = False
     active: bool = True
+    decimals: int = 0  # تعداد اعشار مجاز تعداد (۰ = عدد صحیح)
+    min_quantity: Decimal = ZERO
 
 
 @dataclass(frozen=True)

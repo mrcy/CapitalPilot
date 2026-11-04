@@ -9,6 +9,7 @@ os.environ["BACKUP_DIR"] = str(_tmp / "backups")
 os.environ["LOG_DIR"] = str(_tmp / "logs")
 os.environ["APP_TIMEZONE"] = "Asia/Tehran"
 os.environ["PRICE_API_ALLOWED_HOSTS"] = ""
+os.environ["SCHEDULER_ENABLED"] = "false"
 
 import pytest  # noqa: E402
 

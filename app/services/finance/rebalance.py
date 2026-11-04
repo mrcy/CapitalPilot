@@ -15,11 +15,17 @@ from .valuation import PortfolioValuation
 UNIT_PLACES = Decimal("0.000001")
 
 
-def _floor_units(amount: Decimal, unit_cost: Decimal, fractional: bool) -> Decimal:
+def _floor_units(amount: Decimal, unit_cost: Decimal, fractional: bool, decimals: int = 0,
+                 min_quantity: Decimal = ZERO) -> Decimal:
     if unit_cost <= 0 or amount <= 0:
         return ZERO
     raw = amount / unit_cost
-    return raw.quantize(UNIT_PLACES, rounding=ROUND_DOWN) if fractional else raw.to_integral_value(rounding=ROUND_DOWN)
+    if fractional:
+        places = Decimal(1).scaleb(-decimals) if decimals > 0 else UNIT_PLACES
+        out = raw.quantize(places, rounding=ROUND_DOWN)
+    else:
+        out = raw.to_integral_value(rounding=ROUND_DOWN)
+    return out if out >= min_quantity else ZERO
 
 
 def suggest_allocation(ds: DataSet, val: PortfolioValuation, amount: Decimal) -> dict:
@@ -60,7 +66,7 @@ def suggest_allocation(ds: DataSet, val: PortfolioValuation, amount: Decimal) ->
         q = it["quote"]
         if q is not None and q.ok:
             unit_cost[a.id] = q.price_irt * (Decimal(1) + a.buy_fee_rate / HUNDRED)
-            units[a.id] = _floor_units(it["ideal"], unit_cost[a.id], a.fractional)
+            units[a.id] = _floor_units(it["ideal"], unit_cost[a.id], a.fractional, a.decimals, a.min_quantity)
             spent[a.id] = units[a.id] * unit_cost[a.id]
         elif it["ideal"] > 0:
             warnings.append(f"برای «{a.name}» قیمت معتبر ثبت نشده است؛ تعداد خرید قابل محاسبه نیست.")
@@ -71,6 +77,7 @@ def suggest_allocation(ds: DataSet, val: PortfolioValuation, amount: Decimal) ->
             it for it in items
             if it["asset"].id in unit_cost and not it["asset"].fractional
             and unit_cost[it["asset"].id] <= remaining
+            and units[it["asset"].id] + 1 >= it["asset"].min_quantity
             and (it["ideal"] - spent[it["asset"].id]) * 2 >= unit_cost[it["asset"].id]
         ]
         if not cands:
