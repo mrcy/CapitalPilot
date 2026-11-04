@@ -41,8 +41,8 @@ function openProviderForm({ provider = null, kinds, onDone }) {
     { ltr: true, name: 'cfg_health_path', label: 'مسیر بررسی سلامت (اختیاری)', type: 'text', show: (x) => custom(x.kind) },
     { ltr: true, name: 'cfg_history_path', label: 'مسیر تاریخچه (اختیاری)', type: 'text', show: (x) => custom(x.kind), placeholder: '/history/{symbol}?from={start}&to={end}' },
     { type: 'section', name: 'sp', label: 'ارز، زمان‌بندی و کنترل درخواست' },
-    { name: 'input_currency', label: 'واحد پول قیمت دریافتی', type: 'select', options: codes.map((c) => ({ value: c, label: c === 'IRR' ? 'ریال (IRR)' : `${state.meta.currencies.find((x) => x.code === c)?.name || c} (${c})` })), show: (x) => x.kind !== 'manual' },
-    { name: 'market', label: 'تقویم بازار', type: 'select', options: Object.entries(MARKET).map(([value, label]) => ({ value, label })), show: (x) => x.kind !== 'manual' },
+    { name: 'input_currency', label: 'واحد پول قیمت دریافتی', type: 'select', options: codes.map((c) => ({ value: c, label: c === 'IRR' ? 'ریال (IRR)' : `${state.meta.currencies.find((x) => x.code === c)?.name || c} (${c})` })), show: (x) => x.kind !== 'manual' && x.kind !== 'iranmarket' },
+    { name: 'market', label: 'تقویم بازار', type: 'select', options: Object.entries(MARKET).map(([value, label]) => ({ value, label })), show: (x) => x.kind !== 'manual' && x.kind !== 'iranmarket' },
     { name: 'refresh_interval_minutes', label: 'بازهٔ به‌روزرسانی (دقیقه)', type: 'int', required: true, show: (x) => x.kind !== 'manual' },
     { name: 'min_interval_seconds', label: 'حداقل فاصلهٔ دو درخواست (ثانیه)', type: 'decimal', show: (x) => x.kind !== 'manual', hint: 'سقف نرخ درخواست' },
     { name: 'retry_count', label: 'تعداد تلاش مجدد', type: 'int', show: (x) => x.kind !== 'manual' },
@@ -120,6 +120,22 @@ function openTestDialog(p, kind, done) {
     h('div', { class: 'inline-form' }, h('label', { style: { flex: 1, minWidth: '160px' } }, h('span', { class: 'lbl' }, kind.id_label || 'شناسه'), ext), field ? h('label', null, h('span', { class: 'lbl' }, 'نوع قیمت'), field) : null, search, go), out] });
 }
 
+// سلامت منبع Iran Market Data: آمار فایل واحد (نه تک‌تک دارایی‌ها)
+function imPanel(p, ov) {
+  const s = ov.snapshot, rq = ov.requests;
+  const kvx = (l, v) => h('div', null, h('span', null, l), h('b', null, v ?? '—'));
+  return h('div', { class: 'im-health', 'data-testid': 'im-source-health' },
+    h('div', { class: 'kv' },
+      kvx('تعداد نمادها', num(ov.totals.total)), kvx('نمادهای قدیمی', num(ov.totals.stale)),
+      kvx('زمان تولید فایل منبع', s.generated_at ? fmtDateTime(s.generated_at) : '—'), kvx('زمان پاسخ (میانگین ۲۴ ساعت)', rq.avg_latency_ms != null ? `${num(rq.avg_latency_ms)} میلی‌ثانیه` : '—'),
+      kvx('درخواست‌ها / خطاها (۲۴ ساعت)', `${num(rq.last_24h)} / ${num(rq.errors_24h)}`), kvx('دارایی‌های متصل', num(ov.totals.linked_assets))),
+    ov.connection === 'stale' ? notice(`داده‌ها قدیمی‌اند: ${s.reason}`, 'warn') : null,
+    h('div', { class: 'actions', style: { borderTop: 0, paddingTop: '4px' } },
+      p.is_enabled ? h('button', { class: 'btn tiny primary', 'data-testid': 'im-fetch', onclick: async (e) => { e.currentTarget.disabled = true; try { const r = await api.post('/api/iran-market/refresh'); toast(r.message, r.ok ? 'success' : 'warn', 7000); } catch (err) { /* toast */ } reload(); } }, icon('refresh', 14), 'دریافت دستی فایل') : null,
+      h('a', { class: 'btn tiny', href: '#/iran-market' }, icon('globe', 14), 'صفحهٔ بازار جامع'),
+      h('a', { class: 'btn tiny', href: '#/iran-market/health' }, 'تاریخچهٔ دریافت‌ها')));
+}
+
 function logLines(logs) {
   if (!logs.length) return h('p', { class: 'muted' }, 'هنوز لاگی ثبت نشده است.');
   return h('div', null, logs.map((l) => h('div', { class: `log-line ${l.ok ? '' : 'bad'}` },
@@ -153,9 +169,10 @@ async function deleteProvider(p, done) {
 
 export async function render(root) {
   const [providers, kindsArr, sch, logs] = await Promise.all([api.get('/api/market-data/providers'), api.get('/api/market-data/kinds'), api.get('/api/market-data/scheduler'), api.get('/api/market-data/logs', { limit: 15 })]);
+  const imOv = providers.some((p) => p.kind === 'iranmarket' && !p.is_archived) ? await api.get('/api/iran-market/overview').catch(() => null) : null;
   const kinds = Object.fromEntries(kindsArr.map((k) => [k.kind, k]));
   const done = () => reloadAll();
-  root.append(pageHead('منابع قیمت', 'اتصال به TSETMC، بیت‌پین، StreamData، Servix و هر API دلخواه؛ قیمت دستی همیشه به‌عنوان آخرین گزینه در دسترس است.',
+  root.append(pageHead('منابع قیمت', 'اتصال به TSETMC، بیت‌پین، Iran Market Data، StreamData، Servix و هر API دلخواه؛ قیمت دستی همیشه به‌عنوان آخرین گزینه در دسترس است.',
     h('button', { class: 'btn primary', onclick: () => openProviderForm({ kinds: kindsArr, onDone: done }) }, icon('plus'), 'منبع جدید'),
     h('button', { class: 'btn', onclick: async (e) => { e.currentTarget.disabled = true; const r = await api.post('/api/market-data/refresh'); const okN = r.results.filter((x) => x.ok).length; toast(r.results.length ? `${num(okN)} از ${num(r.results.length)} دارایی به‌روز شد.` : 'دارایی‌ای با منبع قیمت تعریف نشده است.', r.results.some((x) => !x.ok) ? 'warn' : 'success'); reload(); } }, icon('refresh'), 'دریافت همهٔ قیمت‌ها')));
   root.append(notice('نشانی‌های پیش‌فرض TSETMC و بیت‌پین از کلاینت‌های متن‌باز و مستندات عمومی گرفته شده‌اند و باید با «تست اتصال» روی شبکهٔ شما راستی‌آزمایی شوند. StreamData و Servix آدرس پیش‌فرض ندارند: آدرس و کلید را از سرویس‌دهنده بگیرید.', 'info'));
@@ -193,8 +210,9 @@ export async function render(root) {
       h('div', { class: 'kv' },
         h('div', null, h('span', null, 'آخرین دریافت موفق'), h('b', null, p.last_success_at ? fmtDateTime(p.last_success_at) : '—')),
         h('div', null, h('span', null, 'آخرین تلاش'), h('b', null, p.last_attempt_at ? fmtDateTime(p.last_attempt_at) : '—')),
-        h('div', null, h('span', null, 'تأخیر'), h('b', null, p.last_latency_ms != null ? `${num(p.last_latency_ms)} ms` : '—')),
+        h('div', null, h('span', null, 'تأخیر'), h('b', null, p.last_latency_ms != null ? `${num(p.last_latency_ms)} میلی‌ثانیه` : '—')),
         h('div', null, h('span', null, 'دارایی‌های متصل / قیمت‌ها'), h('b', null, `${num(p.source_count)} / ${num(p.price_count)}`))),
+      p.kind === 'iranmarket' && imOv && !p.is_archived ? imPanel(p, imOv) : null,
       p.last_error ? notice(`آخرین خطا: ${p.last_error}`, 'bad') : null,
       p.consecutive_failures >= 3 ? notice(`${num(p.consecutive_failures)} خطای پیاپی؛ قیمت‌های وابسته ممکن است کهنه شوند.`, 'warn') : null,
       h('div', { class: 'actions' },

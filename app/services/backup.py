@@ -181,6 +181,9 @@ def restore_json(db: Session, data: dict) -> dict:
             from ..migrations.steps import backfill_v2
             backfill_v2(db)
             db.commit()
+        from .marketdata.service import ensure_default_providers
+        ensure_default_providers(db)  # پشتیبان نسخه‌های قدیمی‌تر منبع Iran Market Data ندارد؛ (غیرفعال) اضافه می‌شود
+        db.commit()
     except Exception as e:
         db.rollback()
         log.exception("restore failed")
@@ -216,6 +219,8 @@ def confirm_reset(db: Session, token: str, phrase: str, scope: str) -> dict:
     try:
         if scope == "all":
             _wipe(db)
+            db.execute(delete(m.MarketSymbol))  # کش Iran Market Data؛ با دریافت دوباره بازسازی می‌شود
+            db.execute(delete(m.MarketSnapshot))
             db.commit()
             seed_defaults(db)
         else:

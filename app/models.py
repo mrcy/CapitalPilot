@@ -12,7 +12,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
-    Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func,
+    Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -21,7 +21,7 @@ from .database import Base, DecimalType
 TX_TYPES = ("buy", "sell", "deposit", "withdrawal", "dividend", "fee", "adjustment")
 # انواع دارایی اکنون پویا هستند (جدول asset_types)؛ این فهرست فقط کلیدهای سیستمی اولیه است.
 SYSTEM_ASSET_TYPES = ("fund", "stock", "digital", "gold", "silver", "copper", "currency", "fixed_income", "commodity", "index", "other")
-PROVIDER_KINDS = ("tsetmc", "bitpin", "streamdata", "servix", "custom_api", "manual")
+PROVIDER_KINDS = ("tsetmc", "bitpin", "iranmarket", "streamdata", "servix", "custom_api", "manual")
 
 
 class Currency(Base):
@@ -228,6 +228,10 @@ class Price(Base):
     quality_flags: Mapped[str] = mapped_column(Text, default="[]")  # JSON: ["jump","time_lag","no_source_time",...]
     via: Mapped[str] = mapped_column(Text, default="[]")  # JSON: زنجیرهٔ منابعی که تا رسیدن به این قیمت امتحان شدند
     user_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)  # تأیید صریح کاربر (حل اختلاف منابع)
+    # --- Iran Market Data (نسخهٔ ۲٫۳): زمان بررسی و منبع اولیهٔ دادهٔ بالادستی جدا از زمان قیمت و زمان دریافت ---
+    upstream_source: Mapped[str] = mapped_column(String(40), default="")  # مثلاً tgju / nobitex
+    upstream_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # checked_at منبع؛ مفهومی جدا از زمان قیمت
+    snapshot_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # شناسهٔ دریافت (market_snapshots) برای ردیابی
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     asset: Mapped[Asset] = relationship()
 
@@ -297,6 +301,8 @@ class AssetPriceSource(Base):
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_status: Mapped[str] = mapped_column(String(16), default="")
     last_error: Mapped[str] = mapped_column(Text, default="")
+    # JSON: هویت نمادی که کاربر تأیید کرده (ارز، واحد، اندازهٔ واحد، نام)؛ تغییر بعدی در منبع «اتصال را متوقف» می‌کند
+    link_meta: Mapped[str] = mapped_column(Text, default="")
     asset: Mapped[Asset] = relationship()
     provider: Mapped[PriceProvider] = relationship()
 
@@ -314,3 +320,82 @@ class PriceFetchLog(Base):
     message: Mapped[str] = mapped_column(Text, default="")
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     price: Mapped[Decimal | None] = mapped_column(DecimalType, nullable=True)
+
+
+class MarketSnapshot(Base):
+    """هر بار دریافت فایل Iran Market Data (موفق، بدون تغییر یا خطا). زمان تولید فایل، زمان دریافت و زمان قیمت‌ها جدا هستند.
+
+    این جدول کش داده است (در پشتیبان JSON نیست و با دریافت دوباره بازسازی می‌شود)؛ پاسخ خام فشرده در data/raw ذخیره می‌شود.
+    """
+
+    __tablename__ = "market_snapshots"
+    __table_args__ = (Index("ix_snapshot_fetched", "fetched_at"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # بدون FK: کش مستقل از بازیابی پشتیبان
+    fetched_at: Mapped[datetime] = mapped_column(DateTime)  # زمان دریافت توسط CapitalPilot
+    status: Mapped[str] = mapped_column(String(12), default="ok")  # ok | unchanged | error
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # data.generated_at (زمان تولید فایل)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # meta.published_at
+    source_url: Mapped[str] = mapped_column(String(300), default="")
+    http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    etag: Mapped[str] = mapped_column(String(120), default="")
+    sha256: Mapped[str] = mapped_column(String(64), default="")
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    symbol_count: Mapped[int] = mapped_column(Integer, default=0)
+    category_count: Mapped[int] = mapped_column(Integer, default=0)
+    valid_count: Mapped[int] = mapped_column(Integer, default=0)
+    stale_count: Mapped[int] = mapped_column(Integer, default=0)
+    invalid_count: Mapped[int] = mapped_column(Integer, default=0)
+    no_price_count: Mapped[int] = mapped_column(Integer, default=0)
+    skipped_count: Mapped[int] = mapped_column(Integer, default=0)
+    changed_count: Mapped[int] = mapped_column(Integer, default=0)
+    upstream_sources: Mapped[str] = mapped_column(String(200), default="")  # meta.source
+    error: Mapped[str] = mapped_column(Text, default="")
+    raw_path: Mapped[str] = mapped_column(String(300), default="")
+
+
+class MarketSymbol(Base):
+    """آخرین وضعیت هر نماد Iran Market Data. نمادها فقط از خود فایل ساخته می‌شوند (هیچ فهرست ثابتی در کد نیست).
+
+    ``invalid_reason`` فقط ایرادهای ذاتی رکورد است؛ وضعیت نهایی (معتبر/قدیمی/...) با زمان فعلی و تازگی دریافت محاسبه می‌شود.
+    """
+
+    __tablename__ = "market_symbols"
+    __table_args__ = (Index("ix_msym_category", "category"), Index("ix_msym_market", "market"), Index("ix_msym_currency", "currency"))
+    symbol: Mapped[str] = mapped_column(String(120), primary_key=True)
+    name_fa: Mapped[str] = mapped_column(String(200), default="")
+    name_en: Mapped[str] = mapped_column(String(200), default="")
+    category: Mapped[str] = mapped_column(String(60), default="")
+    market: Mapped[str] = mapped_column(String(60), default="")
+    currency: Mapped[str] = mapped_column(String(16), default="")
+    unit: Mapped[str] = mapped_column(String(32), default="")
+    unit_size: Mapped[Decimal | None] = mapped_column(DecimalType, nullable=True)
+    price: Mapped[Decimal | None] = mapped_column(DecimalType, nullable=True)
+    bid: Mapped[Decimal | None] = mapped_column(DecimalType, nullable=True)
+    ask: Mapped[Decimal | None] = mapped_column(DecimalType, nullable=True)
+    open: Mapped[Decimal | None] = mapped_column(DecimalType, nullable=True)
+    high: Mapped[Decimal | None] = mapped_column(DecimalType, nullable=True)
+    low: Mapped[Decimal | None] = mapped_column(DecimalType, nullable=True)
+    prev_close: Mapped[Decimal | None] = mapped_column(DecimalType, nullable=True)
+    change: Mapped[Decimal | None] = mapped_column(DecimalType, nullable=True)
+    change_pct: Mapped[Decimal | None] = mapped_column(DecimalType, nullable=True)
+    volume: Mapped[Decimal | None] = mapped_column(DecimalType, nullable=True)
+    market_status: Mapped[str] = mapped_column(String(40), default="")
+    price_f: Mapped[float | None] = mapped_column(Float, nullable=True)  # فقط برای مرتب‌سازی؛ هرگز در محاسبهٔ مالی استفاده نمی‌شود
+    change_pct_f: Mapped[float | None] = mapped_column(Float, nullable=True)
+    price_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # timestamp (زمان قیمت؛ وقت محلی برنامه)
+    timestamp_raw: Mapped[str] = mapped_column(String(40), default="")
+    timestamp_tehran: Mapped[str] = mapped_column(String(40), default="")
+    timestamp_jalali: Mapped[str] = mapped_column(String(24), default="")
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # checked_at منبع؛ جدا از زمان قیمت
+    upstream_source: Mapped[str] = mapped_column(String(40), default="")  # source: tgju, nobitex, ...
+    api_stale: Mapped[bool] = mapped_column(Boolean, default=False)
+    quality: Mapped[str] = mapped_column(Text, default="[]")  # JSON: لیست quality
+    has_warning: Mapped[bool] = mapped_column(Boolean, default=False)  # quality شامل هشداری غیر از stale
+    invalid_reason: Mapped[str] = mapped_column(String(40), default="")
+    in_latest: Mapped[bool] = mapped_column(Boolean, default=True)  # در آخرین فایل موجود بود
+    search_text: Mapped[str] = mapped_column(Text, default="")
+    first_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    snapshot_id: Mapped[int | None] = mapped_column(Integer, nullable=True)

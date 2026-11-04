@@ -111,5 +111,17 @@ export const REASON_LABEL = { no_price: 'قیمتی ثبت نشده', stale: 'ق
 // وضعیت کیفیت قیمت (لایهٔ کنترل کیفیت) و منشأ قیمت
 export const PRICE_STATUS = { valid: ['معتبر', 'ok'], stale: ['قدیمی', 'warn'], invalid: ['نامعتبر', 'bad'], manual: ['دستی', 'gold'], missing: ['ناموجود', ''], conflict: ['اختلاف منابع', 'bad'], pending: ['در انتظار تأیید', 'warn'] };
 export const ORIGIN = { manual: ['دستی', 'gold'], online: ['آنلاین', 'blue'] };
-export const FLAG_LABEL = { jump: 'تغییر شدید نسبت به قیمت قبلی', time_lag: 'فاصلهٔ زیاد زمان منبع با زمان دریافت', no_source_time: 'منبع زمان قیمت را اعلام نکرده (زمان دریافت جایگزین شد)', future_time: 'زمان قیمت در آینده است', stale: 'قیمت قدیمی', non_positive: 'قیمت صفر، منفی یا نامعتبر', unit_converted: 'واحد قیمت تبدیل شد' };
+export const FLAG_LABEL = { jump: 'تغییر شدید نسبت به قیمت قبلی', time_lag: 'فاصلهٔ زیاد زمان منبع با زمان دریافت', no_source_time: 'منبع زمان قیمت را اعلام نکرده (زمان دریافت جایگزین شد)', future_time: 'زمان قیمت در آینده است', stale: 'قیمت قدیمی', non_positive: 'قیمت صفر، منفی یا نامعتبر', unit_converted: 'واحد قیمت تبدیل شد',
+  api_stale: 'منبع بالادستی این قیمت را «قدیمی» اعلام کرده است', api_spike: 'منبع بالادستی جهش غیرعادی قیمت را گزارش کرده است', api_ohlc_inconsistent: 'منبع بالادستی ناهم‌خوانی باز/بالا/پایین/بسته را گزارش کرده است' };
+// Iran Market Data: دسته‌ها از خود فایل می‌آیند؛ برچسب فارسی فقط برای دستهٔ شناخته‌شده است و دستهٔ جدید با نام خودش نمایش داده می‌شود.
+const _catLabels = { currency: 'ارز', gold: 'طلا', coin: 'سکه', crypto: 'رمزارز', commodity: 'کالا', energy: 'انرژی', precious_metal: 'فلزات گرانبها', index: 'شاخص', other: 'سایر' };
+export const CATEGORY_LABEL = new Proxy(_catLabels, { get: (t, k) => (typeof k === 'string' ? (t[k] ?? k) : t[k]) });
+const _mkLabels = { iran_free: 'بازار آزاد ایران', iran_gold: 'بازار طلا و سکهٔ ایران', crypto_iran: 'رمزارز (ریالی)', crypto: 'رمزارز جهانی', global: 'جهانی', other: 'سایر' };
+export const MARKET_LABEL = new Proxy(_mkLabels, { get: (t, k) => (typeof k === 'string' ? (t[k] ?? k) : t[k]) });
+export const SYMBOL_STATUS = { valid: ['معتبر', 'ok'], warning: ['معتبر با هشدار', 'warn'], stale: ['قدیمی', 'warn'], invalid: ['نامعتبر', 'bad'], no_price: ['بدون قیمت', ''] };
+const _cur = { IRT: 'تومان', IRR: 'ریال', USD: 'دلار', EUR: 'یورو', POINTS: 'امتیاز (شاخص)' };
+export const currencyLabel = (c) => (c ? (_cur[c] || c) : 'نامشخص');
+const _unit = { unit: 'واحد', gram: 'گرم', coin: 'عدد سکه', troy_ounce: 'اونس تروا', barrel: 'بشکه', mesghal: 'مثقال', ton: 'تن', kg: 'کیلوگرم', contract: 'قرارداد' };
+export const unitName = (u) => (u ? (_unit[u] || u) : '—');
+export const CONNECTION = { ok: ['متصل', 'ok'], stale: ['داده قدیمی', 'warn'], error: ['خطا در دریافت', 'bad'], unknown: ['دریافت‌نشده', 'warn'], disabled: ['غیرفعال', ''] };
 export const STATUS_LABEL = { paid: 'پرداخت‌شده', extra: 'اضافه‌واریزی', partial: 'ناقص', partial_overdue: 'ناقص و عقب‌افتاده', overdue: 'عقب‌افتاده', due: 'موعد امروز', upcoming: 'در انتظار' };

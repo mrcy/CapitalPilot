@@ -32,7 +32,8 @@ def price_dict(p: m.Price) -> dict:
             "is_valid": p.is_valid, "validity_note": p.validity_note, "provider_id": p.provider_id,
             "fetched_at": p.fetched_at, "source_time": p.source_time, "price_kind": p.price_kind, "note": p.note,
             "origin": p.origin, "raw_price": p.raw_price, "raw_unit": p.raw_unit, "conversion_note": p.conversion_note,
-            "quality_flags": quality.flags_of(p), "via": _json(p.via), "user_confirmed": p.user_confirmed}
+            "quality_flags": quality.flags_of(p), "via": _json(p.via), "user_confirmed": p.user_confirmed,
+            "upstream_source": p.upstream_source, "upstream_checked_at": p.upstream_checked_at, "snapshot_id": p.snapshot_id}
 
 
 def fx_dict(r: m.FxRate) -> dict:

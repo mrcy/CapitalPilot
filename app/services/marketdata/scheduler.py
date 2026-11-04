@@ -74,6 +74,14 @@ class PriceScheduler:
             due.append(a)
         return due, skipped_closed
 
+    def refresh_iranmarket(self, db: Session, now: datetime) -> dict | None:
+        """دریافت فایل Iran Market Data (یک‌بار برای همهٔ نمادها) هر «بازهٔ منبع» (پیش‌فرض ۳۰ دقیقه) و پس از خطا زودتر. ساعات بازار ندارد (۲۴ساعته)."""
+        from . import iranmarket as im
+        pv = im.get_provider(db)
+        if pv is None or not pv.is_enabled or not im.scheduler_due(db, pv, now):
+            return None
+        return im.fetch_snapshot(db, pv, now=now)
+
     def run_once(self, now: datetime | None = None) -> dict:
         """یک دور اجرا؛ هم‌زمانی دوگانه جلوگیری می‌شود (درخواست تکراری ندارد)."""
         if not self._run_lock.acquire(blocking=False):
@@ -84,7 +92,19 @@ class PriceScheduler:
                 row = db.get(m.AppSettings, 1)
                 if row is not None and not row.scheduler_enabled:
                     return {"skipped": "disabled"}
+                im_res = None
+                try:
+                    im_res = self.refresh_iranmarket(db, now)
+                except Exception:  # دریافت فایل نباید دریافت سایر منابع را متوقف کند
+                    db.rollback()
+                    log.exception("iranmarket refresh failed")
                 due, closed = self.due_assets(db, now)
+                if im_res and im_res.get("ok") and im_res.get("status") == "ok":
+                    # دادهٔ تازه رسیده: دارایی‌های متصل به Iran Market بدون انتظار برای بازهٔ خودشان دوباره ارزیابی می‌شوند
+                    ids = {a.id for a in due}
+                    linked = set(db.scalars(select(m.AssetPriceSource.asset_id).join(m.PriceProvider, m.PriceProvider.id == m.AssetPriceSource.provider_id)
+                                            .where(m.PriceProvider.kind == "iranmarket", m.AssetPriceSource.is_enabled.is_(True))))
+                    due += [a for a in self.engine.assets_with_sources(db) if a.id in linked and a.id not in ids]
                 results = [self.engine.refresh_asset(db, a, now=now) for a in due]
             summary = {"at": now, "due": len(due), "ok": sum(1 for r in results if r["ok"]),
                        "failed": sum(1 for r in results if not r["ok"]), "skipped_market_closed": closed}

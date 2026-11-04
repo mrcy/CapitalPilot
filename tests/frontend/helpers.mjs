@@ -75,7 +75,7 @@ export async function fill(page, name, value, scope = '.modal') {
   await page.keyboard.press('Backspace');
   if (value !== '') await el.type(String(value), { delay: 5 });
 }
-export async function submitModal(page) { const el = await page.$('.modal button.primary'); if (!el) throw new Error('دکمهٔ ثبت مودال پیدا نشد'); await el.evaluate((e) => e.scrollIntoView({ block: 'center' })); await el.click(); }
+export async function submitModal(page) { const el = (await page.$('.modal-foot button.primary')) || (await page.$('.modal button.primary')); if (!el) throw new Error('دکمهٔ ثبت مودال پیدا نشد'); await el.evaluate((e) => e.scrollIntoView({ block: 'center' })); await el.click(); }
 export const choose = (page, name, value, scope = '.modal') => page.select(`${scope} [name="${name}"]`, String(value));
 
 /** ارقام لاتین در متن‌های نمایشی (به‌جز محتوای عمداً LTR مثل نشانی/کلید/کد) */

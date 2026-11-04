@@ -61,6 +61,8 @@ const ICONS = {
   play: 'M7 5l12 7-12 7z',
   chevron: 'M9 6l6 6-6 6',
   pulse: 'M3 12h4l3-8 4 16 3-8h4',
+  link: 'M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1',
+  globe: 'M12 21a9 9 0 100-18 9 9 0 000 18zM3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18',
 };
 export function icon(name, size = 18) {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

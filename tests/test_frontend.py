@@ -45,7 +45,11 @@ def live_server():
     tmp = Path(tempfile.mkdtemp(prefix="cp-e2e-srv-"))
     port = _free_port()
     env = {**os.environ, "DATABASE_URL": f"sqlite:///{tmp / 'e2e.db'}", "DATA_DIR": str(tmp), "BACKUP_DIR": str(tmp / "backups"),
-           "LOG_DIR": str(tmp / "logs"), "SCHEDULER_ENABLED": "false", "APP_TIMEZONE": "Asia/Tehran", "PRICE_API_ALLOWED_HOSTS": ""}
+           "LOG_DIR": str(tmp / "logs"), "SCHEDULER_ENABLED": "false", "APP_TIMEZONE": "Asia/Tehran", "PRICE_API_ALLOWED_HOSTS": "",
+           # آزمون رابط هرگز نباید به شبکهٔ واقعی برود؛ دادهٔ Iran Market از فایل واقعی ذخیره‌شده و با مسیر واقعی دریافت/پردازش وارد می‌شود
+           "IRANMARKET_URL": "https://iranmarket.invalid/data/latest-toman.json"}
+    seed = subprocess.run([sys.executable, "-m", "tests.iranmarket_data"], cwd=ROOT, env=env, capture_output=True, text=True, timeout=120)
+    assert seed.returncode == 0, seed.stdout[-1500:] + seed.stderr[-1500:]
     proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", str(port)], cwd=ROOT, env=env,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     base = f"http://127.0.0.1:{port}"

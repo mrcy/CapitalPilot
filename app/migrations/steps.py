@@ -132,3 +132,12 @@ def m003_price_quality(engine: Engine) -> None:
         c.execute(text("UPDATE prices SET origin = 'manual' WHERE origin IS NULL OR origin = ''"))
         # قیمت خام و ردپای تبدیل برای قیمت‌های آنلاین قدیمی ناشناخته است؛ جعل نمی‌کنیم
         c.execute(text("UPDATE prices SET raw_unit = '' WHERE raw_unit IS NULL"))
+
+
+def m004_iran_market(engine: Engine) -> None:
+    """نسخهٔ ۲٫۳: منبع Iran Market Data. ستون‌های جدید (prices.upstream_*، asset_price_sources.link_meta) با sync_columns و جدول‌های
+    market_snapshots / market_symbols با create_all ساخته شده‌اند. اینجا فقط منبع (غیرفعال) اضافه می‌شود؛ هیچ داده‌ای تغییر نمی‌کند."""
+    from ..services.marketdata.service import ensure_default_providers
+    with Session(engine) as db:
+        ensure_default_providers(db)
+        db.commit()

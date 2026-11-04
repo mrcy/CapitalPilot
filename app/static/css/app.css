@@ -272,3 +272,16 @@ option { background: #0e1830; }
   table.data.compact th { white-space: normal; line-height: 1.5; }
   table.data.compact td.num { white-space: nowrap; }
 }
+
+/* ---- v2.3 بازار جامع ایران ---- */
+.kpis.k7 { grid-template-columns: repeat(auto-fit, minmax(124px, 1fr)); }
+.im-cats { margin: 14px 0 10px; }
+.im-name { font-weight: 600; color: var(--text); }
+.im-ohlc { display: flex; flex-direction: column; gap: 1px; font-size: 12px; }
+.im-table .table-wrap { max-width: 100%; }
+.im-results { max-height: 260px; overflow: auto; margin-bottom: 10px; }
+.im-preview { margin-top: 6px; }
+.im-pane .check { margin-top: 8px; }
+.src-im { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.src-im .sym { font-weight: 600; }
+.im-health { margin-bottom: 12px; }

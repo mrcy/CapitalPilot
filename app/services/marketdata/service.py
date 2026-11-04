@@ -31,6 +31,15 @@ KIND_INFO = {
         "description": "قیمت لحظه‌ای، آخرین معامله و تغییر ۲۴ساعتهٔ بازارهای تکی. سبدهای آمادهٔ بیت‌پین پشتیبانی نمی‌شوند.",
         "defaults": {"auto_approve": True, "market": "24h", "input_currency": "IRT", "refresh_interval_minutes": 10},
     },
+    "iranmarket": {
+        "label": "Iran Market Data (بازار جامع ایران)", "needs_url": False, "needs_key": False, "supports_search": True,
+        "supports_history": False, "default_unit": "IRT", "default_market": "none", "id_label": "نماد (Symbol) از فهرست بازار جامع",
+        "price_fields": [],
+        "description": "فایل عمومی و بدون کلید latest-toman.json با هزاران نماد ارز، طلا، سکه، رمزارز، کالا و انرژی؛ هر ۳۰ دقیقه منتشر می‌شود. "
+                       "فقط برای داراییِ دارای نمادِ تأییدشده استفاده می‌شود؛ قیمت‌ها با ارز و واحد خودشان (تومان یا دلار) ذخیره می‌شوند. "
+                       "برای آینهٔ دیگر (مثلاً jsDelivr) آدرس کامل فایل را در «آدرس API» بنویسید.",
+        "defaults": {"auto_approve": True, "market": "none", "input_currency": "", "refresh_interval_minutes": 30},
+    },
     "streamdata": {
         "label": "StreamData (سهام و شاخص خارجی)", "needs_url": True, "needs_key": True, "supports_search": False,
         "supports_history": False, "default_unit": "USD", "default_market": "none", "id_label": "نماد در سرویس",
@@ -62,7 +71,7 @@ KIND_INFO = {
 
 DEFAULT_PROVIDERS = [
     ("TSETMC", "tsetmc"), ("بیت‌پین (Bitpin)", "bitpin"), ("StreamData", "streamdata"), ("Servix", "servix"),
-    ("Custom API", "custom_api"), ("قیمت دستی", "manual"),
+    ("Custom API", "custom_api"), ("قیمت دستی", "manual"), ("Iran Market Data", "iranmarket"),
 ]
 
 
@@ -236,7 +245,7 @@ def purge_provider(db: Session, pv: m.PriceProvider) -> dict:
 def log_dict(l: m.PriceFetchLog, names: dict[int, str], assets: dict[int, str]) -> dict:
     return {"id": l.id, "ts": l.ts, "provider_id": l.provider_id, "provider": names.get(l.provider_id),
             "asset_id": l.asset_id, "asset": assets.get(l.asset_id), "ok": l.ok, "status": l.status,
-            "message": l.message, "latency_ms": l.latency_ms, "price": l.price}
+            "message": l.message, "latency_ms": l.latency_ms, "price": l.price, "code": l.code}
 
 
 def list_logs(db: Session, *, provider_id: int | None, asset_id: int | None, only_errors: bool, limit: int) -> list[dict]:

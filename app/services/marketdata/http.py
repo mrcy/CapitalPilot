@@ -51,13 +51,14 @@ def check_url(url: str, *, allow_http: bool, has_credentials: bool, enforce_allo
 
 
 class HttpClient:
-    def __init__(self, timeout: float = 8.0, *, allow_http: bool = False, enforce_allowlist: bool = False):
+    def __init__(self, timeout: float = 8.0, *, allow_http: bool = False, enforce_allowlist: bool = False, max_bytes: int = MAX_BYTES):
         self.timeout = timeout
+        self.max_bytes = max_bytes
         self.allow_http = allow_http
         self.enforce_allowlist = enforce_allowlist
 
     def get(self, url: str, params: dict | None = None, headers: dict | None = None, *, secret_params: tuple[str, ...] = (),
-            has_credentials: bool = False) -> httpx.Response:
+            has_credentials: bool = False, allow_not_modified: bool = False) -> httpx.Response:
         check_url(url, allow_http=self.allow_http, has_credentials=has_credentials, enforce_allowlist=self.enforce_allowlist)
         try:
             with httpx.Client(timeout=self.timeout, follow_redirects=False, transport=_transport,
@@ -66,7 +67,7 @@ class HttpClient:
                     body = bytearray()
                     for chunk in resp.iter_bytes():
                         body.extend(chunk)
-                        if len(body) > MAX_BYTES:
+                        if len(body) > self.max_bytes:
                             raise _perr("پاسخ منبع بیش از حد بزرگ است.", "parse")
                     status = resp.status_code
                     out = httpx.Response(status, content=bytes(body), headers=resp.headers, request=resp.request)
@@ -74,6 +75,8 @@ class HttpClient:
             raise _perr("زمان انتظار پاسخ منبع تمام شد.", "timeout", retriable=True)
         except httpx.HTTPError as e:
             raise _perr(f"اتصال به منبع ناموفق بود ({type(e).__name__}).", "network", retriable=True)
+        if status == 304 and allow_not_modified:
+            return out
         if status in (401, 403):
             raise _perr(f"دسترسی رد شد (HTTP {status}): کلید API یا نوع احراز هویت را بررسی کنید.", "auth", http_status=status)
         if status == 429:

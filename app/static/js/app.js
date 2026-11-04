@@ -16,6 +16,7 @@ const ROUTES = [
   { path: 'risk', title: 'مدیریت ریسک', icon: 'shield', load: () => import('./pages/risk.js') },
   { path: 'reports', title: 'گزارش‌ها', icon: 'report', load: () => import('./pages/reports.js') },
   { path: 'sources', title: 'منابع قیمت', icon: 'sources', load: () => import('./pages/sources.js') },
+  { path: 'iran-market', title: 'بازار جامع ایران', icon: 'globe', load: () => import('./pages/iranmarket.js') },
   { path: 'intelligence', title: 'مرکز هوشمندی قیمت‌ها', icon: 'pulse', load: () => import('./pages/intelligence.js') },
   { path: 'prices', title: 'قیمت‌ها و نرخ ارز', icon: 'price', load: () => import('./pages/prices.js') },
   { path: 'settings', title: 'تنظیمات', icon: 'settings', load: () => import('./pages/settings.js') },

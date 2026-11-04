@@ -34,7 +34,16 @@ def source_dict(s: m.AssetPriceSource) -> dict:
             "provider_kind": s.provider.kind if s.provider else None, "priority": s.priority,
             "external_id": s.external_id, "price_field": s.price_field, "is_enabled": s.is_enabled,
             "interval_minutes": s.interval_minutes, "last_attempt_at": s.last_attempt_at,
-            "last_success_at": s.last_success_at, "last_status": s.last_status, "last_error": s.last_error}
+            "last_success_at": s.last_success_at, "last_status": s.last_status, "last_error": s.last_error,
+            "link": _link(s.link_meta)}
+
+
+def _link(t: str) -> dict | None:
+    try:
+        v = json.loads(t) if t else None
+        return v if isinstance(v, dict) else None
+    except ValueError:
+        return None
 
 
 def asset_dict(db: Session, a: m.Asset, with_sources: bool = True) -> dict:
@@ -106,10 +115,21 @@ def _apply_sources(db: Session, a: m.Asset, sources) -> None:
         if pv.kind not in ("manual",) and not s.external_id.strip():
             raise ValidationFailure(f"شناسهٔ دارایی در منبع «{pv.name}» را وارد کنید.")
         row = existing.get(s.provider_id)
+        link_meta = None
+        if pv.kind == "iranmarket":
+            # اتصال نماد Iran Market باید صریحاً تأیید شود؛ اتصال تأییدشدهٔ بدون تغییر دوباره تأیید نمی‌خواهد.
+            from .marketdata import iranmarket as im
+            sym = s.external_id.strip()
+            if row is None or row.external_id != sym or not row.link_meta:
+                if not s.confirm_link:
+                    raise ValidationFailure("اتصال نماد Iran Market Data باید صریحاً تأیید شود (تطبیق خودکار انجام نمی‌شود).", code="link_not_confirmed")
+                link_meta = im.make_link_meta(db, a, sym)
         if row is None:
             row = m.AssetPriceSource(asset_id=a.id, provider_id=s.provider_id)
             db.add(row)
         row.priority, row.external_id, row.price_field = rank, s.external_id.strip(), s.price_field
+        if link_meta is not None:
+            row.link_meta = link_meta
         row.is_enabled, row.interval_minutes = s.is_enabled, s.interval_minutes
         keep.add(s.provider_id)
     for pid, row in existing.items():

@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     tsetmc_base_url: str = "http://old.tsetmc.com/tsev2/data"
     tsetmc_service_url: str = "http://service.tsetmc.com/tsev2/data"
     bitpin_base_url: str = "https://api.bitpin.ir"
+    # Iran Market Data (نسخهٔ ۲٫۳): فایل JSON عمومی و بدون کلید؛ هر ۳۰ دقیقه منتشر می‌شود. جایگزین (آینه): jsDelivr
+    iranmarket_url: str = "https://raw.githubusercontent.com/iran-market/iran-market.github.io/main/data/latest-toman.json"
+    iranmarket_max_bytes: int = 20_000_000  # سقف حجم فایل (فایل فعلی حدود ۱ مگابایت است)
+    iranmarket_raw_keep: int = 5  # تعداد پاسخ‌های خام فشرده‌ای که برای عیب‌یابی نگه داشته می‌شود
+    iranmarket_stale_after_minutes: int = 0  # 0 = خودکار: max(۹۰، سه برابر بازهٔ دریافت)؛ پس از آن کل دادهٔ دریافت‌شده «قدیمی» است
+    iranmarket_history_ttl_minutes: int = 360  # کش تاریخچهٔ روزانهٔ نماد (فایل‌های history روزی یک‌بار ساخته می‌شوند)
     # StreamData / Servix: مستندات عمومی تأییدشده‌ای وجود ندارد؛ آدرس و کلید را خودتان از سرویس‌دهنده بگیرید.
     streamdata_base_url: str = ""
     streamdata_api_key: str = Field(default="", repr=False)

@@ -55,7 +55,7 @@ export async function openAssetForm({ asset = null, onDone } = {}) {
       extraBox.append(h('label', null, h('span', { class: 'lbl' }, fd.label), ctl));
     });
   };
-  const ed = sourcesEditor({ providers, kinds, initial: asset?.sources || [], currency: asset?.price_currency });
+  const ed = sourcesEditor({ providers, kinds, initial: asset?.sources || [], currency: () => f.getValues().price_currency || asset?.price_currency, asset: asset ? { id: asset.id, name: asset.name } : null });
   let lastType = values.asset_type;
   const f = formModal({
     title: asset ? `ویرایش ${asset.name}` : 'افزودن دارایی جدید', fields, values, wide: true,

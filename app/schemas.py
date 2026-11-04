@@ -82,6 +82,8 @@ class PriceSourceIn(Strict):
     priority: int = Field(default=1, ge=1, le=20)
     is_enabled: bool = True
     interval_minutes: int | None = Field(default=None, ge=1, le=10080)
+    # فقط برای Iran Market Data: تأیید صریح نمادِ انتخاب‌شده (تطبیق خودکار بدون تأیید پذیرفته نمی‌شود)
+    confirm_link: bool = False
 
 
 class AssetIn(Strict):
@@ -140,7 +142,7 @@ class PortfolioTargetsIn(Strict):
 
 class ProviderIn(Strict):
     name: str = Field(min_length=1, max_length=80)
-    kind: Literal["tsetmc", "bitpin", "streamdata", "servix", "custom_api", "manual"]
+    kind: Literal["tsetmc", "bitpin", "iranmarket", "streamdata", "servix", "custom_api", "manual"]
     is_enabled: bool = False
     base_url: str = Field(default="", max_length=300)
     auth_type: Literal["none", "bearer", "header", "query"] = "none"

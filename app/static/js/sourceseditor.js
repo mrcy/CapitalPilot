@@ -1,7 +1,8 @@
 // ویرایشگر اولویت منابع قیمت یک دارایی: اصلی ← جایگزین ← دستی + جستجوی نماد (TSETMC/بیت‌پین)
 import { api } from './api.js';
 import { clear, h, icon, modal, toast, notice } from './ui.js';
-import { num } from './format.js';
+import { num, unitName, currencyLabel } from './format.js';
+import { openSymbolLinker, symName } from './imlinker.js';
 
 export async function loadProviders() {
   const [providers, kinds] = await Promise.all([api.get('/api/market-data/providers'), api.get('/api/market-data/kinds')]);
@@ -30,7 +31,8 @@ export function openSymbolSearch({ provider, kind, onPick }) {
 }
 
 /** ویرایشگر: initial = sources دارایی (با provider_id, external_id, price_field, interval_minutes, is_enabled) */
-export function sourcesEditor({ providers, kinds, initial = [], currency }) {
+export function sourcesEditor({ providers, kinds, initial = [], currency, asset = null }) {
+  const curNow = () => (typeof currency === 'function' ? currency() : currency) || '';
   const rows = [];
   const box = h('div');
   const list = h('div');
@@ -44,6 +46,21 @@ export function sourcesEditor({ providers, kinds, initial = [], currency }) {
     const en = h('input', { type: 'checkbox', checked: src.is_enabled !== false, 'aria-label': 'فعال' });
     const kind = () => kinds[providers.find((p) => String(p.id) === sel.value)?.kind] || {};
     const label = h('small', { class: 'hint' });
+    // Iran Market Data: نماد فقط با انتخاب و تأیید صریح کاربر؛ تایپ دستی یا تطبیق خودکار وجود ندارد.
+    const isIM = () => providers.find((p) => String(p.id) === sel.value)?.kind === 'iranmarket';
+    let symbol = src.external_id || '', link = src.link || null, confirmed = false;
+    const symText = h('span', { class: 'sym', 'data-testid': 'im-symbol' });
+    const imBtn = h('button', { class: 'btn tiny primary', type: 'button', 'data-testid': 'im-pick', onclick: () => openSymbolLinker({ asset, currency: curNow(), current: symbol, onConfirm: (d) => {
+      symbol = d.symbol; confirmed = true; link = { symbol: d.symbol, name_fa: d.name_fa, name_en: d.name_en, unit: d.unit, currency: d.currency }; drawIM();
+    } }) }, icon('search', 14), 'انتخاب نماد');
+    const imBox = h('div', { class: 'src-im' }, symText, imBtn);
+    const drawIM = () => {
+      symText.textContent = '';
+      if (symbol) { symText.append(h('span', { dir: 'ltr', class: 'ltr-text' }, symbol), link?.name_fa && link.name_fa !== symbol ? ` — ${link.name_fa}` : '', link ? ` (${currencyLabel(link.currency)}، ${unitName(link.unit)})` : ''); imBtn.lastChild.textContent = 'تغییر نماد'; }
+      else { symText.append(h('span', { class: 'muted' }, 'نمادی انتخاب نشده')); imBtn.lastChild.textContent = 'انتخاب نماد'; }
+      if (confirmed) symText.append(' ', h('span', { class: 'badge ok' }, 'تأیید شد'));
+    };
+    drawIM();
     const searchBtn = h('button', { class: 'btn tiny', type: 'button', onclick: () => {
       const prov = providers.find((p) => String(p.id) === sel.value);
       openSymbolSearch({ provider: prov, kind: kind(), onPick: (s) => { ext.value = s.external_id; } });
@@ -51,17 +68,18 @@ export function sourcesEditor({ providers, kinds, initial = [], currency }) {
     const sync = () => {
       const k = kind();
       const manual = k.default_unit !== undefined && providers.find((p) => String(p.id) === sel.value)?.kind === 'manual';
-      ext.hidden = manual; searchBtn.hidden = manual || !k.supports_search; field.hidden = !(k.price_fields || []).length; interval.hidden = manual;
-      label.textContent = manual ? 'آخرین قیمت دستی تأییدشده استفاده می‌شود.' : (k.id_label || '');
+      const im = isIM();
+      ext.hidden = manual || im; searchBtn.hidden = manual || im || !k.supports_search; field.hidden = !(k.price_fields || []).length; interval.hidden = manual || im; imBox.hidden = !im;
+      label.textContent = manual ? 'آخرین قیمت دستی تأییدشده استفاده می‌شود.' : im ? 'قیمت فقط از نمادِ تأییدشده خوانده می‌شود؛ قیمت قدیمی یا نامعتبر در ارزش‌گذاری نمی‌آید.' : (k.id_label || '');
     };
     sel.addEventListener('change', sync);
-    const row = { el: null, get: () => ({ provider_id: Number(sel.value), external_id: ext.value.trim(), price_field: field.hidden ? '' : field.value, is_enabled: en.checked, interval_minutes: interval.hidden || !interval.value.trim() ? null : Number(interval.value.replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))) }) };
+    const row = { el: null, isIM, hasSymbol: () => !!symbol, get: () => ({ provider_id: Number(sel.value), external_id: isIM() ? symbol : ext.value.trim(), ...(isIM() && confirmed ? { confirm_link: true } : {}), price_field: field.hidden ? '' : field.value, is_enabled: en.checked, interval_minutes: interval.hidden || !interval.value.trim() ? null : Number(interval.value.replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))) }) };
     const up = h('button', { class: 'icon-btn', type: 'button', title: 'اولویت بالاتر', 'aria-label': 'اولویت بالاتر', onclick: () => { const i = rows.indexOf(row); if (i > 0) { rows.splice(i, 1); rows.splice(i - 1, 0, row); draw(); } } }, h('span', { style: { transform: 'rotate(-90deg)', display: 'inline-flex' } }, icon('chevron', 16)));
-    const del = h('button', { class: 'icon-btn', type: 'button', title: 'حذف منبع', 'aria-label': 'حذف منبع', onclick: () => { rows.splice(rows.indexOf(row), 1); draw(); } }, icon('trash', 16));
+    const del = h('button', { class: 'icon-btn', type: 'button', title: 'حذف منبع / قطع اتصال', 'aria-label': 'حذف منبع یا قطع اتصال', onclick: () => { rows.splice(rows.indexOf(row), 1); draw(); } }, icon('trash', 16));
     row.badge = h('span', { class: 'badge info' });
     row.el = h('div', { class: 'src-row' },
       h('label', null, h('span', { class: 'lbl' }, row.badge), sel),
-      h('label', null, h('span', { class: 'lbl' }, 'شناسه در منبع'), h('div', { class: 'inline-form', style: { flexWrap: 'nowrap' } }, ext, searchBtn), label, field),
+      h('label', null, h('span', { class: 'lbl' }, 'شناسه در منبع'), h('div', { class: 'inline-form', style: { flexWrap: 'nowrap' } }, ext, searchBtn), imBox, label, field),
       h('label', null, h('span', { class: 'lbl' }, 'بازه (دقیقه)'), interval),
       h('label', { class: 'check' }, en, h('span', null, 'فعال')),
       h('div', { class: 'row-actions' }, up, del));
@@ -79,7 +97,7 @@ export function sourcesEditor({ providers, kinds, initial = [], currency }) {
     h('small', { class: 'hint', style: { display: 'block', marginTop: '6px' } }, `اگر منبع اصلی خطا بدهد، به‌ترتیب منبع بعدی امتحان می‌شود. قیمت قدیمی هرگز به‌عنوان قیمت روز استفاده نمی‌شود.${currency ? ` واحد قیمت دارایی: ${currency}.` : ''}`));
   draw();
   return { node: box, providers, get: () => rows.map((r, i) => ({ ...r.get(), priority: i + 1 })), validate: () => {
-    for (const r of rows) { const g = r.get(); const p = providers.find((x) => x.id === g.provider_id); if (p && p.kind !== 'manual' && !g.external_id) return `برای منبع «${p.name}» شناسهٔ دارایی نزد منبع را وارد کنید.`; }
+    for (const r of rows) { const g = r.get(); const p = providers.find((x) => x.id === g.provider_id); if (p && p.kind === 'iranmarket' && !g.external_id) return 'برای «Iran Market Data» یک نماد انتخاب و تأیید کنید یا این منبع را حذف (قطع اتصال) کنید.'; if (p && p.kind !== 'manual' && !g.external_id) return `برای منبع «${p.name}» شناسهٔ دارایی نزد منبع را وارد کنید.`; }
     return null;
   } };
 }

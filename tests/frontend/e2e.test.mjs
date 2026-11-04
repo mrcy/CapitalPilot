@@ -241,6 +241,145 @@ e2e('دارایی: افزودن، بایگانی، بازیابی و ویرای�
   assert.equal((await find()).symbol, 'آزمون۲');
 });
 
+// ------------------------------------------------------------------ بازار جامع ایران (Iran Market Data)
+// دیتابیس این آزمون با همان مسیر واقعی دریافت و پردازش (فایل واقعی ذخیره‌شده، بدون شبکه) پر شده است.
+const rowsOf = (page) => page.$$eval('[data-testid="im-table"] tbody tr', (r) => r.length);
+const waitRows = (page, pred) => page.waitForFunction((src) => { const n = document.querySelectorAll('[data-testid="im-table"] tbody tr').length; return new Function('n', `return ${src}`)(n); }, { timeout: 10000 }, pred);
+
+e2e('بازار جامع ایران (دسکتاپ): شاخص‌ها، دسته‌های پویا، جست‌وجو، فیلتر، مرتب‌سازی، صفحه‌بندی و جزئیات', async (page, errors) => {
+  await page.setViewport({ width: 1366, height: 900 });
+  const ov = await api('GET', '/api/iran-market/overview');
+  assert.equal(ov.totals.total, 1042);
+  await go(page, 'iran-market');
+  assert.equal(await page.$('#view .notice.bad'), null);
+  assert.equal((await page.$$('[data-testid="im-kpis"] .kpi')).length, 7);
+  assert.equal((await page.$$('.im-cats .tab')).length, ov.categories.length + 1); // دسته‌ها از دادهٔ فایل
+  assert.equal(await rowsOf(page), 50);
+  assert.deepEqual(await latinDigitScan(page), []);
+  // جست‌وجو (نماد لاتین)
+  const q = await api('GET', '/api/iran-market/symbols?q=USD_IRR&page_size=200');
+  await page.type('.toolbar input[type="search"]', 'USD_IRR');
+  await waitRows(page, `n === ${Math.min(q.total, 50)}`);
+  assert.ok(q.total >= 1);
+  // فیلتر دسته با چیپ
+  await page.evaluate(() => { document.querySelector('.toolbar input[type="search"]').value = ''; document.querySelector('.toolbar input[type="search"]').dispatchEvent(new Event('input')); });
+  await sleep(700);
+  const gold = ov.categories.find((c) => c.key === 'gold');
+  await page.click('.im-cats [data-cat="gold"]');
+  await waitRows(page, `n === ${Math.min(gold.count, 50)}`);
+  // فیلتر وضعیت قدیمی + مرتب‌سازی قیمت
+  await page.click('.im-cats [data-cat=""]');
+  await page.select('select[aria-label="وضعیت"]', 'stale');
+  await sleep(700);
+  const st = await api('GET', '/api/iran-market/symbols?status=stale&page_size=1');
+  assert.equal(await page.$eval('.pager span', (e) => e.textContent.includes('از')), true);
+  assert.ok(st.total > 0);
+  await page.select('select[aria-label="وضعیت"]', '');
+  await page.select('select[aria-label="مرتب‌سازی"]', 'price:desc');
+  await sleep(700);
+  // صفحه‌بندی
+  await clickText(page, '.pager button', 'بعدی');
+  await sleep(700);
+  assert.match((await page.$eval('.pager', (e) => e.textContent)).replace(/[\u2066\u2069]/g, ''), /صفحه ۲ از/);
+  // جزئیات یک نماد
+  await go(page, 'iran-market/s/GOLD_18K_IRR');
+  assert.ok(await page.$('[data-testid="im-detail"]'));
+  assert.equal(await page.$('#view .notice.bad'), null);
+  assert.ok((await page.$eval('#view', (e) => e.textContent)).includes('گرم'));
+  assert.deepEqual(await latinDigitScan(page), []);
+  // سلامت
+  await go(page, 'iran-market/health');
+  assert.ok(await page.$('[data-testid="im-health"]'));
+  assert.deepEqual(await latinDigitScan(page), []);
+  assert.deepEqual(errors, []);
+});
+
+e2e('بازار جامع ایران (موبایل ۳۹۰): بدون اسکرول افقی، جدول کارتی و جزئیات', async (page, errors) => {
+  await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
+  await go(page, 'iran-market');
+  assert.equal(await rowsOf(page), 50);
+  let o = await overflowOf(page);
+  assert.ok(o.doc <= 1, `اسکرول افقی صفحه: ${o.doc}`);
+  assert.ok(o.tables.every((x) => x <= 1), `اسکرول افقی جدول: ${o.tables}`);
+  await go(page, 'iran-market/s/USD_IRR_FREE');
+  o = await overflowOf(page);
+  assert.ok(o.doc <= 1, `اسکرول افقی جزئیات: ${o.doc}`);
+  await go(page, 'iran-market/health');
+  o = await overflowOf(page);
+  assert.ok(o.doc <= 1 && o.tables.every((x) => x <= 1), `سلامت: ${JSON.stringify(o)}`);
+  await go(page, 'sources');
+  assert.ok(await page.$('[data-testid="im-source-health"]'));
+  o = await overflowOf(page);
+  assert.ok(o.doc <= 1, `منابع قیمت: ${o.doc}`);
+  assert.deepEqual(errors, []);
+});
+
+e2e('اتصال نماد به دارایی در فرم دارایی: جست‌وجو، پیش‌نمایش، تأیید صریح، تغییر و قطع اتصال', async (page, errors) => {
+  await page.setViewport({ width: 1366, height: 900 });
+  const imId = (await api('GET', '/api/market-data/providers')).find((p) => p.kind === 'iranmarket').id;
+  const find = async () => (await api('GET', '/api/assets?status=all')).assets.find((a) => a.name === 'دلار آزاد آزمون');
+  const pick = async (symbol, acks) => {
+    await clickText(page, '.modal [data-testid="im-pick"]', '');
+    await page.waitForSelector('[data-testid="im-search"]');
+    await page.type('[data-testid="im-search"]', symbol);
+    await page.waitForFunction((sym) => [...document.querySelectorAll('.im-row')].some((r) => r.textContent.includes(sym)), { timeout: 8000 }, symbol);
+    await clickText(page, '.im-row .btn', 'مشاهده و انتخاب');
+    await page.waitForSelector('[data-testid="im-preview"]');
+    assert.equal(await page.$eval('[data-testid="im-confirm"]', (b) => b.disabled), true, 'بدون تأیید نباید فعال باشد');
+    for (const a of acks) await page.click(`[data-testid="${a}"]`);
+    assert.equal(await page.$eval('[data-testid="im-confirm"]', (b) => b.disabled), false);
+    await page.click('[data-testid="im-confirm"]');
+    await sleep(500);
+  };
+  await go(page, 'assets');
+  await clickText(page, 'button', 'دارایی جدید');
+  await modalOpen(page);
+  await fill(page, 'name', 'دلار آزاد آزمون');
+  await fill(page, 'symbol', 'USDT');
+  await clickText(page, '.modal button', 'افزودن منبع');
+  await page.select('.modal select[aria-label="منبع"]', String(imId));
+  assert.ok(await page.$eval('.modal [data-testid="im-pick"]', (b) => !b.closest('[hidden]') && !b.parentElement.hidden));
+  // ذخیره بدون انتخاب نماد رد می‌شود
+  await submitModal(page);
+  await sleep(500);
+  assert.ok(await page.$('.modal .form-error:not([hidden])'), 'باید خطای انتخاب نماد نشان داده شود');
+  assert.equal(await find(), undefined);
+  await pick('USD_IRR_FREE', ['im-ack']);
+  await submitModal(page);
+  await modalClosed(page);
+  let a = await find();
+  assert.ok(a, 'دارایی ساخته نشد');
+  let src = (await api('GET', `/api/assets/${a.id}`)).sources;
+  assert.equal(src.length, 1);
+  assert.equal(src[0].external_id, 'USD_IRR_FREE');
+  assert.equal(src[0].link.currency, 'IRT');
+  assert.ok(src[0].link.confirmed_at);
+  // تغییر نماد: نماد دارای واحد گرم نیاز به تأیید واحد هم دارد
+  await settle(page);
+  await sleep(800);
+  await clickLabel(page, 'ویرایش دلار آزاد آزمون');
+  await modalOpen(page);
+  await pick('GOLD_18K_IRR', ['im-ack', 'im-ack-unit']);
+  await submitModal(page);
+  await modalClosed(page);
+  src = (await api('GET', `/api/assets/${a.id}`)).sources;
+  assert.equal(src[0].external_id, 'GOLD_18K_IRR');
+  assert.equal(src[0].link.unit, 'gram');
+  // قطع اتصال با حذف ردیف منبع (انسداد نمادهای ناسازگار در تست‌های پایتون پوشش داده شده است)
+  await settle(page);
+  await sleep(800);
+  await clickLabel(page, 'ویرایش دلار آزاد آزمون');
+  await modalOpen(page);
+  await clickLabel(page, 'حذف منبع یا قطع اتصال');
+  await submitModal(page);
+  await modalClosed(page);
+  assert.deepEqual((await api('GET', `/api/assets/${a.id}`)).sources, []);
+  // قیمت‌ها و تراکنش‌ها دست‌نخورده‌اند و دارایی‌ای خودکار ساخته نشده است
+  assert.equal((await api('GET', '/api/assets?status=all')).assets.filter((x) => x.name === 'دلار آزاد آزمون').length, 1);
+  await api('POST', `/api/assets/${a.id}/archive`).catch(() => {});
+  assert.deepEqual(errors, []);
+});
+
 // ------------------------------------------------------------------ حالت‌های بارگذاری، خطا و خالی
 e2e('حالت بارگذاری، خطای سرور با تلاش دوباره و قطع شبکه', async (page) => {
   await page.setViewport({ width: 1366, height: 900 });

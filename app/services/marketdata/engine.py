@@ -71,12 +71,14 @@ class MarketDataEngine:
         key = (pv.id, external_id, field)
         with self._lock_for(key):
             hit = self._cache.get(key)
-            if use_cache and self.cache_ttl > 0 and hit and self._mono() - hit[0] < self.cache_ttl:
+            local = pv.kind == "iranmarket"  # از دیتابیس خوانده می‌شود: نه کش ۱۵ثانیه‌ای (تازگی نباید پنهان شود) و نه throttle شبکه
+            if use_cache and not local and self.cache_ttl > 0 and hit and self._mono() - hit[0] < self.cache_ttl:
                 return hit[1], True, 0
             prov = provider or self.build(pv)
             attempts = max(0, int(pv.retry_count)) + 1
             for i in range(attempts):
-                self._throttle(pv)
+                if not local:
+                    self._throttle(pv)
                 t0 = self._mono()
                 try:
                     q = prov.get_quote(external_id, field)
@@ -89,8 +91,9 @@ class MarketDataEngine:
                     self._sleep(delay)
                     continue
                 ms = int((self._mono() - t0) * 1000)
-                with self._meta_lock:
-                    self._cache[key] = (self._mono(), q)
+                if not local:
+                    with self._meta_lock:
+                        self._cache[key] = (self._mono(), q)
                 return q, False, ms
         raise ProviderError("دریافت قیمت ناموفق بود.", "error")  # pragma: no cover
 
@@ -101,13 +104,16 @@ class MarketDataEngine:
                                ok=ok, status=status, message=message[:1000], latency_ms=latency, price=price, code=code[:32]))
 
     def _touch(self, pv: m.PriceProvider, src: m.AssetPriceSource | None, ok: bool, err: str, latency: int | None, now: datetime) -> None:
-        pv.last_attempt_at = now
-        pv.last_latency_ms = latency
-        if ok:
-            pv.last_success_at, pv.last_status, pv.last_error, pv.consecutive_failures = now, "ok", "", 0
-        else:
-            pv.last_status, pv.last_error = "error", err[:500]
-            pv.consecutive_failures = (pv.consecutive_failures or 0) + 1
+        # Iran Market Data: سلامت منبع فقط از دریافت فایل می‌آید؛ خواندن قیمت یک نماد از دادهٔ ذخیره‌شده (که ممکن است
+        # «قدیمی» یا بدون قیمت باشد) نباید منبع را «قطع» نشان دهد.
+        if not (pv.kind == "iranmarket" and src is not None):
+            pv.last_attempt_at = now
+            pv.last_latency_ms = latency
+            if ok:
+                pv.last_success_at, pv.last_status, pv.last_error, pv.consecutive_failures = now, "ok", "", 0
+            else:
+                pv.last_status, pv.last_error = "error", err[:500]
+                pv.consecutive_failures = (pv.consecutive_failures or 0) + 1
         if src is not None:
             src.last_attempt_at = now
             src.last_status = "ok" if ok else "error"
@@ -135,6 +141,7 @@ class MarketDataEngine:
                     exists.raw_unit = assessed.raw_unit if assessed else norm_unit(q.unit)
                     exists.conversion_note = assessed.conversion_note if assessed else ""
                     exists.quality_flags = assessed.flags_json if assessed else "[]"
+                    self._upstream(exists, q)
                     db.flush()
                     return "stored", exists
                 return "duplicate", None
@@ -150,6 +157,7 @@ class MarketDataEngine:
                       raw_price=assessed.raw_price if assessed else q.price, raw_unit=assessed.raw_unit if assessed else norm_unit(q.unit),
                       conversion_note=assessed.conversion_note if assessed else "",
                       quality_flags=assessed.flags_json if assessed else "[]")
+        self._upstream(row, q)
         try:
             with db.begin_nested():
                 db.add(row)
@@ -158,12 +166,47 @@ class MarketDataEngine:
             return "duplicate", None
         return "stored", row
 
+    @staticmethod
+    def _upstream(row: m.Price, q: Quote) -> None:
+        """منبع اولیه، زمان بررسی منبع (checked_at) و شناسهٔ دریافت؛ جدا از زمان قیمت و زمان دریافت ذخیره می‌شوند."""
+        x = q.extra or {}
+        row.upstream_source = str(x.get("upstream_source") or "")[:40]
+        ca = x.get("checked_at")
+        row.upstream_checked_at = ca if isinstance(ca, datetime) else None
+        sid = x.get("snapshot_id")
+        row.snapshot_id = int(sid) if isinstance(sid, int) else None
+
+    @staticmethod
+    def _check_identity(src: m.AssetPriceSource | None, q: Quote) -> None:
+        """نمادی که کاربر تأیید کرده نباید بی‌صدا تغییر کند (ارز/واحد/اندازهٔ واحد)؛ در غیر این‌صورت اتصال برای این دریافت رد می‌شود."""
+        ident = (q.extra or {}).get("identity")
+        if not ident or src is None or not src.link_meta:
+            return
+        try:
+            meta = json.loads(src.link_meta)
+        except ValueError:
+            return
+        for k in ("currency", "unit", "unit_size"):
+            if k in meta and str(meta[k]) != str(ident.get(k)):
+                raise ProviderError(f"مشخصات نماد پس از تأیید شما تغییر کرده است ({k}: «{meta[k]}» ← «{ident.get(k)}»)؛ اتصال را بررسی و دوباره تأیید کنید.", "link_changed")
+
     # ------------------------------------------------------------ منبع به منبع
     def _validate(self, q: Quote, asset: m.Asset, max_age_days: int, now: datetime, market: str = "none",
                   prev_price: Decimal | None = None) -> Assessment:
         """اعتبارسنجی با لایهٔ کیفیت؛ ناسازگاری واحد → ProviderError(currency_mismatch)."""
-        return assess_quote(raw_price=q.price, unit=q.unit, source_time=q.source_time, now=now, asset_currency=asset.price_currency,
-                            max_age_days=max_age_days, market=market, prev_price=prev_price)
+        a = assess_quote(raw_price=q.price, unit=q.unit, source_time=q.source_time, now=now, asset_currency=asset.price_currency,
+                         max_age_days=max_age_days, market=market, prev_price=prev_price)
+        x = q.extra or {}
+        for f in x.get("quality") or []:
+            if isinstance(f, str) and f != "stale" and f"api_{f}" not in a.flags:
+                a.flags.append(f"api_{f}")  # هشدار کیفیت منبع بالادستی؛ در جزئیات قیمت نمایش داده می‌شود
+        if x.get("upstream_stale"):
+            a.valid = False
+            for f in ("stale", "api_stale"):
+                if f not in a.flags:
+                    a.flags.append(f)
+            a.note = "منبع بالادستی این قیمت را قدیمی (stale) اعلام کرده است؛ در ارزش‌گذاری استفاده نمی‌شود."
+        return a
 
     @staticmethod
     def _prev_valid_price(db: Session, asset: m.Asset, pv: m.PriceProvider, now: datetime) -> Decimal | None:
@@ -218,6 +261,9 @@ class MarketDataEngine:
             t0 = self._mono()
             try:
                 q, cached, ms = self.fetch_quote(pv, src.external_id, src.price_field, use_cache=True)
+                self._check_identity(src, q)
+                if (q.extra or {}).get("from_snapshot"):
+                    ms = None  # خواندن از دیتابیس است؛ زمان پاسخ شبکه نیست و در آمار زمان پاسخ منبع نمی‌آید
                 asm = self._validate(q, asset, max_age, now, pv.market, self._prev_valid_price(db, asset, pv, now))
                 price, valid, note = asm.price, asm.valid, asm.note
             except ProviderError as e:

@@ -128,7 +128,7 @@ function openDetails(r) {
 
 async function openPriority(r, onDone) {
   const { providers, kinds } = await loadProviders();
-  const ed = sourcesEditor({ providers, kinds, initial: r.sources.map((s) => ({ provider_id: s.provider_id, external_id: s.external_id, price_field: s.price_field, is_enabled: s.is_enabled })), currency: r.currency });
+  const ed = sourcesEditor({ providers, kinds, initial: r.sources.map((s) => ({ provider_id: s.provider_id, external_id: s.external_id, price_field: s.price_field, is_enabled: s.is_enabled, link: s.link })), currency: r.currency, asset: { id: r.asset_id, name: r.name || r.asset } });
   const err = h('div', { class: 'form-error', role: 'alert', hidden: true });
   const save = h('button', { class: 'btn primary', type: 'button' }, 'ذخیرهٔ اولویت‌ها');
   const m = modal({ title: `اولویت منابع قیمت — ${r.name}`, wide: true, body: [ed.node, err], footer: [h('button', { class: 'btn ghost', type: 'button', onclick: () => m.close() }, 'انصراف'), save] });
