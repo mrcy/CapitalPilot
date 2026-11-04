@@ -3,6 +3,7 @@ import { refreshMeta, setPortfolio, state } from './state.js';
 import { clear, closeAllModals, h, icon, installDigitFix, loadingBox, notice } from './ui.js';
 import { destroyAll, setupCharts } from './charts.js';
 import { fmtDate, todayISO } from './format.js';
+import { initGlobalSearch } from './globalsearch.js';
 
 const ROUTES = [
   { path: 'dashboard', title: 'داشبورد', icon: 'dashboard', load: () => import('./pages/dashboard.js') },
@@ -83,6 +84,7 @@ async function boot() {
   document.getElementById('menu-btn').addEventListener('click', () => setMenu(!sidebar.classList.contains('open')));
   scrim.addEventListener('click', () => setMenu(false));
   buildNav();
+  initGlobalSearch();
   try {
     await refreshMeta();
     buildSwitcher();

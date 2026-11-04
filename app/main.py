@@ -17,7 +17,7 @@ from .database import Base, SessionLocal, engine
 from .errors import register_error_handlers
 from .migrations import run_migrations
 from .logging_conf import setup_logging
-from .routers import analytics, assets, catalog, core, data, iranmarket, market, portfolios, prices, reports, transactions
+from .routers import analytics, assets, catalog, core, data, iranmarket, market, portfolios, prices, reports, search, transactions
 from .services.seed import is_seeded, seed_defaults
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -100,7 +100,7 @@ def create_app() -> FastAPI:
             resp.headers["Cache-Control"] = "no-store"
         return resp
 
-    for r in (core, catalog, assets, portfolios, transactions, prices, market, iranmarket, analytics, reports, data):
+    for r in (core, catalog, assets, portfolios, transactions, prices, market, iranmarket, search, analytics, reports, data):
         app.include_router(r.router)
 
     @app.get("/api/health", tags=["core"])

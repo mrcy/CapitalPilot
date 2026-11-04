@@ -285,3 +285,79 @@ option { background: #0e1830; }
 .src-im { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .src-im .sym { font-weight: 600; }
 .im-health { margin-bottom: 12px; }
+
+/* جست‌وجوی سراسری بازار (v2.4) */
+.gs-trigger { display: inline-flex; align-items: center; gap: 10px; flex: 0 1 380px; min-width: 0; height: 40px; padding: 0 12px; background: #0a1329; border: 1px solid var(--line2); border-radius: 12px; color: var(--muted); cursor: pointer; text-align: start; transition: border-color .15s, background .15s; }
+.gs-trigger:hover { border-color: #6f86ff77; color: var(--text); } .gs-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gs-trigger-ico { display: inline-flex; flex: none; } .gs-trigger-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
+.gs-trigger-kbd { flex: none; }
+@media (max-width: 719px) { .gs-trigger { flex: none; width: 40px; padding: 0; justify-content: center; } .gs-trigger-text, .gs-trigger-kbd { display: none; } }
+@media (min-width: 1024px) { .top-title { flex: 0 1 auto; margin-inline-end: auto; } .gs-trigger { flex-basis: 420px; } }
+body.gs-lock { overflow: hidden; }
+.gs-overlay { position: fixed; inset: 0; z-index: 90; background: rgba(2,5,14,.72); backdrop-filter: blur(3px); display: flex; justify-content: center; align-items: flex-start; padding: 8vh 16px 16px; }
+.gs-overlay[hidden] { display: none; }
+.gs-panel { width: 100%; max-width: 780px; max-height: min(78vh, 720px); display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line2); border-radius: 18px; box-shadow: var(--shadow); overflow: hidden; outline: none; }
+.gs-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.gs-head-ico { color: var(--muted); display: inline-flex; }
+.gs-panel input.gs-input { flex: 1; min-width: 0; background: transparent; border: 0; box-shadow: none; padding: 6px 2px; min-height: 40px; font-size: 16px; border-radius: 0; }
+.gs-panel input.gs-input:focus { box-shadow: none; }
+.gs-spin { width: 18px; height: 18px; border-width: 2px; } .gs-spin[hidden] { display: none; }
+.gs-head .gs-close { display: none; }
+.gs-chips { display: flex; gap: 6px; padding: 8px 12px; overflow-x: auto; border-bottom: 1px solid var(--line); scrollbar-width: none; flex: none; }
+.gs-chips::-webkit-scrollbar { display: none; } .gs-chips[hidden], .gs-list[hidden], .gs-detail[hidden], .gs-banner[hidden] { display: none; }
+.gs-chip { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 3px 12px; border-radius: 99px; background: #ffffff0d; border: 1px solid transparent; color: var(--muted); font-size: 13px; cursor: pointer; }
+.gs-chip:hover { color: var(--text); } .gs-chip.active { background: var(--accent-bg); border-color: #6f86ff66; color: #c7d2ff; } .gs-chip.empty:not(.active) { opacity: .45; }
+.gs-count { font-size: 11px; opacity: .85; } .gs-count:empty { display: none; }
+.gs-banner { padding: 8px 12px 0; flex: none; }
+.gs-note { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; padding: 7px 10px; border-radius: 10px; margin-bottom: 6px; } .gs-note svg { flex: none; margin-top: 4px; }
+.gs-note.warn { background: #f5a54a14; color: #ffd3a0; border: 1px solid #f5a54a44; } .gs-note.info { background: var(--accent-bg); color: #bcc8ff; border: 1px solid #6f86ff44; }
+.gs-list, .gs-detail { flex: 1; overflow-y: auto; min-height: 120px; overscroll-behavior: contain; padding: 4px 8px 10px; }
+.gs-section { margin-top: 6px; } .gs-sec-head { display: flex; align-items: center; gap: 10px; padding: 8px 6px 4px; font-size: 13px; } .gs-sec-head .btn { margin-inline-start: auto; }
+.gs-row { display: grid; grid-template-columns: 34px minmax(0,1fr) auto auto; gap: 4px 10px; align-items: center; width: 100%; text-align: start; padding: 8px 8px; border: 1px solid transparent; border-radius: 12px; background: transparent; cursor: pointer; color: inherit; }
+.gs-row:hover, .gs-row.active { background: #ffffff0b; border-color: var(--line2); } .gs-row.active { outline: 2px solid #6f86ff55; outline-offset: -2px; }
+.gs-ico { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: #ffffff10; color: var(--muted); }
+.gs-ico.k-asset { background: var(--gold-bg); color: var(--gold); } .gs-ico.k-symbol { background: var(--blue-bg); color: var(--blue); } .gs-ico.k-platform, .gs-ico.k-market { background: var(--accent-bg); color: #9db0ff; }
+.gs-main { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.gs-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; } .gs-name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.gs-en { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-sub { color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 0 6px; align-items: center; } .gs-sym { color: var(--text); font-weight: 600; letter-spacing: .2px; } .gs-dot { font-style: normal; opacity: .6; }
+.gs-tags { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 2px; } .gs-tags .badge { font-size: 11px; padding: 0 8px; }
+.gs-warn { display: inline-flex; gap: 4px; align-items: center; font-size: 11.5px; color: var(--amber); }
+.gs-price { display: flex; flex-direction: column; align-items: flex-end; text-align: end; line-height: 1.5; min-width: 0; } .gs-price-val { font-size: 13.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gs-price small { font-size: 11.5px; } .gs-price.dim .gs-price-val { color: var(--muted); text-decoration: line-through; text-decoration-color: #f5a54a88; } .gs-src { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-chg.pos { color: var(--green); } .gs-chg.neg { color: var(--red); }
+.gs-stcol { display: flex; align-items: center; justify-content: flex-end; min-width: 64px; }
+.gs-row.st-stale { background: #f5a54a0a; } .gs-row.st-invalid .gs-name b, .gs-row.st-missing .gs-name b { color: #cdd7ee; }
+.gs-state { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 38px 16px; color: var(--muted); }
+.gs-terms { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 6px; }
+.gs-term { display: inline-flex; align-items: center; gap: 6px; padding: 3px 12px; border-radius: 99px; background: #ffffff0d; border: 1px solid var(--line2); color: var(--text); cursor: pointer; font-size: 13px; }
+.gs-term:hover, .gs-term.active { border-color: #6f86ffaa; background: var(--accent-bg); } .gs-term-in { display: inline-flex; gap: 6px; align-items: center; }
+.gs-more { display: block; margin: 8px auto 4px; }
+.gs-foot { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; padding: 8px 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; flex: none; } .gs-foot .kbd { margin-inline: 2px; }
+.gs-foot-note { margin-inline-start: auto; }
+.gs-detail { padding: 8px 14px 0; display: flex; flex-direction: column; } .gs-detail .notice { margin: 8px 0 0; }
+.gs-dhead { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; } .gs-dtitle h3 { font-size: 18px; } .gs-dsub { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 4px; color: var(--muted); font-size: 13px; }
+.gs-dbody { margin-top: 10px; } .gs-pricebox { padding: 12px 14px; border: 1px solid var(--line2); border-radius: 14px; background: #0c1630; }
+.gs-bigprice { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; } .gs-bigprice b { font-size: 22px; font-variant-numeric: tabular-nums; } .gs-pricebox.dim .gs-bigprice b { color: var(--muted); }
+.gs-meta { font-size: 12.5px; margin-top: 2px; }
+.gs-linkinfo { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; padding: 9px 12px; border-radius: 12px; background: var(--blue-bg); border: 1px solid #4aa3ff44; color: #b5d8ff; font-size: 13px; }
+.gs-tabs { display: flex; gap: 4px; margin-top: 12px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; flex: none; }
+.gs-tab { background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 8px 12px; color: var(--muted); cursor: pointer; white-space: nowrap; font-size: 13.5px; } .gs-tab:hover { color: var(--text); } .gs-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.gs-tabpanel { padding: 10px 0 14px; min-height: 120px; } .gs-chartbox { position: relative; height: 240px; } .gs-chart-note { font-size: 12.5px; margin-bottom: 6px; }
+.gs-kv { margin-top: 0; } .gs-h4 { margin: 14px 0 6px; font-size: 13.5px; } .gs-hist { overflow-x: auto; } .gs-tbl { font-size: 12.5px; }
+.gs-actions { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 0 12px; margin-top: auto; background: linear-gradient(180deg, transparent, var(--card) 28%); border-top: 1px solid var(--line); }
+.gs-actions .btn[disabled] { opacity: .5; cursor: not-allowed; }
+.gs-field { margin-top: 10px; } .gs-preview { margin: 10px 0; padding: 12px; } label.check.gs-check { padding-top: 8px; align-items: flex-start; }
+@media (max-width: 719px) {
+  .gs-overlay { padding: 0; align-items: stretch; }
+  .gs-panel { max-width: none; max-height: none; height: 100dvh; border-radius: 0; border: 0; }
+  .gs-head .gs-close { display: inline-flex; } .gs-esc { display: none; }
+  .gs-row { grid-template-columns: 34px minmax(0,1fr); } .gs-stcol { grid-column: 2; justify-content: flex-start; min-width: 0; }
+  .gs-price { grid-column: 2; flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; text-align: start; }
+  .gs-name { flex-wrap: wrap; gap: 0 8px; } .gs-name b { white-space: normal; overflow: visible; } .gs-en { white-space: normal; overflow: visible; }
+  .gs-foot { display: none; } .gs-head { padding: 8px 10px; } .gs-actions .btn { flex: 1 1 calc(50% - 8px); justify-content: center; }
+  .gs-src { max-width: 130px; }
+}
+@media (prefers-reduced-motion: reduce) { .gs-trigger { transition: none; } }
+.form-grid .gs-field { margin-top: 0; }
+.gs-input::-webkit-search-cancel-button, .gs-input::-webkit-search-decoration { -webkit-appearance: none; appearance: none; display: none; }

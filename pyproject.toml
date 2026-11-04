@@ -1,6 +1,6 @@
 [project]
 name = "capitalpilot"
-version = "2.3.0"
+version = "2.4.0"
 description = "CapitalPilot — کنترل سرمایه، تصمیم هوشمندانه (مدیریت سرمایه‌گذاری شخصی، فارسی و راست‌به‌چپ)"
 readme = "README.md"
 requires-python = ">=3.11"

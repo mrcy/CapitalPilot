@@ -25,7 +25,9 @@ const e2e = (name, fn) => test(name, { timeout: 120000 }, async (t) => {
   if (skipReason) { t.skip(skipReason); return; }
   const page = await browser.newPage();
   const errors = trackErrors(page);
-  try { await fn(page, errors, t); } finally { await page.close(); }
+  // Chromiumِ تک‌پردازه‌ای headless گاهی تایمرهای صفحه را تا فراخوانی بعدی CDP عقب می‌اندازد؛ یک ضربان سبک جلوی این آزمون‌های ناپایدار را می‌گیرد
+  const beat = setInterval(() => { page.evaluate(() => 0).catch(() => {}); }, 150);
+  try { await fn(page, errors, t); } finally { clearInterval(beat); await page.close(); }
 });
 
 async function routes(page) {
@@ -378,6 +380,315 @@ e2e('اتصال نماد به دارایی در فرم دارایی: جست‌و
   assert.equal((await api('GET', '/api/assets?status=all')).assets.filter((x) => x.name === 'دلار آزاد آزمون').length, 1);
   await api('POST', `/api/assets/${a.id}/archive`).catch(() => {});
   assert.deepEqual(errors, []);
+});
+
+// ------------------------------------------------------------------ جست‌وجوی سراسری بازار (v2.4)
+const GS = (id) => `[data-testid="${id}"]`;
+const gsOpenKey = async (page, mod = 'Control') => { await page.keyboard.down(mod); await page.keyboard.press('KeyK'); await page.keyboard.up(mod); };
+const gsVisible = (page) => page.$eval(GS('gs-overlay'), (e) => !e.hidden).catch(() => false);
+// انتظار با پرس‌وجوی مستقیم (evaluate)؛ در Chromiumِ تک‌پردازه‌ای headless تایمرها گاهی تا اولین فراخوانی CDP دیرتر اجرا می‌شوند
+async function gsWaitQ(page, want, ms = 10000) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (await page.evaluate((w) => document.querySelector('[data-testid="gs-list"]')?.dataset.q === w, want)) return;
+    await sleep(120);
+  }
+  throw new Error(`نتایج «${want}» نیامد`);
+}
+async function gsSearch(page, q) {
+  await page.waitForSelector(GS('gs-input'), { visible: true });
+  await page.$eval(GS('gs-input'), (e) => { e.value = ''; e.focus(); });
+  await page.type(GS('gs-input'), q, { delay: 8 });
+  const want = q.trim();
+  await gsWaitQ(page, want);
+}
+const gsRows = (page) => page.$$eval(GS('gs-row'), (r) => r.map((x) => ({ symbol: x.dataset.symbol, kind: x.dataset.kind, status: x.querySelector('[data-testid="gs-status"]')?.dataset.status || '', text: x.textContent, dim: !!x.querySelector('.gs-price.dim') })));
+const gsPostAsset = async (name, extra = {}) => {
+  const plats = Object.fromEntries((await api('GET', '/api/platforms')).map((p) => [p.name, p.id]));
+  return api('POST', '/api/assets', { platform_id: plats['مفید'], name, symbol: 'تست', asset_type: 'fund', price_currency: 'IRT', sources: [], ...extra });
+};
+const counts = async () => ({ tx: (await api('GET', '/api/transactions')).total, assets: (await api('GET', '/api/assets?status=all')).assets.length });
+
+e2e('جست‌وجوی سراسری (دسکتاپ): کادر نوار بالا، نمونه‌های الزامی، گروه‌بندی، «مشاهدهٔ همه» و صفحه‌بندی بدون بارگذاری مجدد', async (page, errors) => {
+  await page.setViewport({ width: 1366, height: 900 });
+  await go(page, 'dashboard');
+  assert.ok(await page.$eval('#gs-trigger', (e) => e.offsetParent !== null && e.getBoundingClientRect().width > 200), 'کادر جست‌وجو در دسکتاپ همیشه دیده می‌شود');
+  assert.ok((await page.$eval('#gs-trigger', (e) => e.textContent)).includes('جست‌وجوی سراسری'));
+  assert.match(await page.$eval('#gs-trigger .kbd', (e) => e.textContent), /(Ctrl|⌘) K/);
+  await page.evaluate(() => { window.__marker = 'same-page'; });
+  await page.click('#gs-trigger');
+  await page.waitForSelector(GS('gs-panel'), { visible: true });
+  assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), 'gs-input', 'فوکوس باید روی کادر جست‌وجو باشد');
+  // پیشنهادهای محبوب از دادهٔ واقعی
+  await page.waitForSelector(GS('gs-popular'));
+  const terms = await page.$$eval(GS('gs-popular-term'), (b) => b.map((x) => x.textContent));
+  assert.ok(terms.length >= 3);
+  // نمونه‌های الزامی
+  for (const [q, first] of [['دلار', 'USD_IRR_FREE'], ['bitcoin', 'BTC_USD'], ['BTC', 'BTC_USD'], ['طلای ۱۸', 'GOLD_18K_IRR']]) {
+    await gsSearch(page, q);
+    const rows = await gsRows(page);
+    assert.ok(rows.length > 0, q);
+    assert.equal(rows[0].symbol, first, `نخستین نتیجهٔ «${q}»`);
+    assert.deepEqual(await latinDigitScan(page), [], `رقم لاتین در نتایج «${q}»`);
+  }
+  // هر ردیف: نام، نماد، دسته، قیمت و وضعیت
+  const row = await page.$eval(`${GS('gs-row')}[data-symbol="GOLD_18K_IRR"]`, (r) => ({ t: r.textContent, st: !!r.querySelector('[data-testid="gs-status"]'), price: !!r.querySelector('[data-testid="gs-price"]') }));
+  assert.ok(row.t.includes('طلای ۱۸ عیار') && row.t.includes('GOLD_18K_IRR') && row.t.includes('تومان') && row.st && row.price);
+  // «طلا»: چند گروه، شمار روی فیلترها، مشاهدهٔ همه و نمایش بیشتر
+  await gsSearch(page, 'طلا');
+  const secs = await page.$$eval('.gs-section', (s) => s.map((x) => x.dataset.testid));
+  assert.ok(secs.length >= 2, `گروه‌های «طلا»: ${secs}`);
+  assert.ok((await page.$$eval('.gs-chip .gs-count', (c) => c.map((x) => x.textContent).filter(Boolean))).length >= 3, 'شمار نتایج روی فیلترها');
+  const seeAll = (await page.$$(`[data-testid^="gs-all-"]`))[0];
+  assert.ok(seeAll, 'برای گروه‌های پرنتیجه «مشاهدهٔ همه» وجود دارد');
+  await seeAll.click();
+  await page.waitForFunction(() => document.querySelector('.gs-chip.active')?.dataset.group !== 'all');
+  await page.waitForSelector(GS('gs-total'));
+  const total = Number((await api('GET', `/api/search?q=${encodeURIComponent('طلا')}&group=${await page.$eval('.gs-chip.active', (c) => c.dataset.group)}&page_size=1`)).total);
+  const n1 = (await gsRows(page)).length;
+  assert.equal(n1, Math.min(30, total));
+  if (total > 30) {
+    await page.click(GS('gs-more'));
+    await page.waitForFunction((x) => document.querySelectorAll('[data-testid="gs-row"]').length > x, {}, n1);
+  }
+  // فیلتر «دارایی‌های من» و بازگشت به «همه»
+  await page.click(GS('gs-chip-all'));
+  await page.waitForFunction(() => document.querySelector('.gs-chip.active')?.dataset.group === 'all');
+  assert.equal(await page.evaluate(() => window.__marker), 'same-page', 'نتایج بدون بارگذاری مجدد صفحه آمده‌اند');
+  // حالت خالی
+  await gsSearch(page, 'zzzqqqxxx999');
+  await page.waitForSelector(GS('gs-state-empty'));
+  assert.deepEqual(errors, []);
+});
+
+e2e('جست‌وجوی سراسری: میانبرهای Ctrl+K و ⌘K، Esc، حرکت با فلش، Enter، تله فوکوس و جست‌وجوهای اخیر', async (page, errors) => {
+  await page.setViewport({ width: 1366, height: 900 });
+  await go(page, 'dashboard');
+  await page.evaluate(() => localStorage.removeItem('cp.gs.recent'));
+  assert.equal(await gsVisible(page), false);
+  await gsOpenKey(page);
+  await page.waitForSelector(GS('gs-panel'), { visible: true });
+  assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), 'gs-input');
+  await page.keyboard.press('Escape');
+  assert.equal(await gsVisible(page), false, 'Esc می‌بندد');
+  await gsOpenKey(page, 'Meta');
+  assert.equal(await gsVisible(page), true, '⌘K هم باز می‌کند');
+  await gsOpenKey(page, 'Meta');
+  assert.equal(await gsVisible(page), false, 'میانبر دوباره می‌بندد');
+  // فقط با کلید K همراه Ctrl؛ K ساده در فرم‌ها چیزی را باز نمی‌کند
+  await page.keyboard.press('KeyK');
+  assert.equal(await gsVisible(page), false);
+  // باز شدن با دکمه و برگشت فوکوس به دکمه پس از Esc
+  await page.focus('#gs-trigger');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector(GS('gs-panel'), { visible: true });
+  await page.keyboard.press('Escape');
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'gs-trigger');
+  // پیمایش با فلش‌ها و Enter
+  await gsOpenKey(page);
+  await gsSearch(page, 'BTC');
+  const a0 = await page.$eval(GS('gs-input'), (e) => e.getAttribute('aria-activedescendant'));
+  await page.keyboard.press('ArrowDown');
+  const a1 = await page.$eval(GS('gs-input'), (e) => e.getAttribute('aria-activedescendant'));
+  assert.notEqual(a0, a1);
+  assert.equal(await page.$eval(`#${a1}`, (e) => e.getAttribute('aria-selected')), 'true');
+  await page.keyboard.press('ArrowUp');
+  assert.equal(await page.$eval(GS('gs-input'), (e) => e.getAttribute('aria-activedescendant')), a0);
+  await page.keyboard.press('Enter');
+  await page.waitForSelector(GS('gs-action-link'), { visible: true });
+  // تله فوکوس: Tab هرگز از پنل بیرون نمی‌رود
+  for (let i = 0; i < 25; i++) {
+    await page.keyboard.press('Tab');
+    assert.ok(await page.evaluate(() => !!document.activeElement.closest('[data-testid="gs-panel"]')), `فوکوس از پنل خارج شد (Tab ${i})`);
+  }
+  await page.keyboard.down('Shift'); await page.keyboard.press('Tab'); await page.keyboard.up('Shift');
+  assert.ok(await page.evaluate(() => !!document.activeElement.closest('[data-testid="gs-panel"]')));
+  await page.keyboard.press('Escape');
+  assert.equal(await gsVisible(page), false, 'Esc از نمای جزئیات هم کل پنل را می‌بندد');
+  // جست‌وجوی اخیر: ذخیره روی Enter، نمایش، اجرا و پاک‌کردن
+  await gsOpenKey(page);
+  await gsSearch(page, 'دلار');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Escape');
+  assert.ok((await page.evaluate(() => JSON.parse(localStorage.getItem('cp.gs.recent') || '[]'))).includes('دلار'));
+  await gsOpenKey(page);
+  await page.waitForSelector(GS('gs-recent'));
+  assert.ok((await page.$$eval(GS('gs-recent-item'), (b) => b.map((x) => x.textContent))).some((t) => t.includes('دلار')));
+  await page.click(GS('gs-recent-item'));
+  await gsWaitQ(page, 'دلار');
+  await page.$eval(GS('gs-input'), (e) => { e.value = ''; e.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.waitForSelector(GS('gs-clear-recent'));
+  await page.click(GS('gs-clear-recent'));
+  await page.waitForFunction(() => !document.querySelector('[data-testid="gs-recent"]'));
+  assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('cp.gs.recent') || '[]')), []);
+  assert.deepEqual(errors, []);
+});
+
+e2e('جست‌وجوی سراسری (موبایل ۳۹۰): آیکن هدر، پنل تمام‌صفحه، جزئیات، بازگشت و بستن بدون اسکرول افقی', async (page, errors) => {
+  await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
+  await go(page, 'dashboard');
+  const tr = await page.$eval('#gs-trigger', (e) => ({ w: e.getBoundingClientRect().width, vis: e.offsetParent !== null, text: getComputedStyle(e.querySelector('.gs-trigger-text')).display }));
+  assert.ok(tr.vis && tr.w < 60 && tr.text === 'none', `آیکن جست‌وجو در هدر: ${JSON.stringify(tr)}`);
+  await page.click('#gs-trigger');
+  await page.waitForSelector(GS('gs-panel'), { visible: true });
+  const r = await page.$eval(GS('gs-panel'), (e) => { const b = e.getBoundingClientRect(); return { w: b.width, h: b.height, vh: innerHeight, vw: innerWidth }; });
+  assert.ok(r.w >= r.vw - 1 && r.h >= r.vh - 1, `پنل تمام‌صفحه: ${JSON.stringify(r)}`);
+  assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), 'gs-input');
+  assert.ok(await page.$eval(GS('gs-close'), (e) => e.offsetParent !== null), 'دکمهٔ بستن در موبایل');
+  assert.equal(await page.evaluate(() => getComputedStyle(document.body).overflow), 'hidden', 'اسکرول پس‌زمینه قفل است');
+  await gsSearch(page, 'bitcoin');
+  assert.ok((await gsRows(page)).length > 0);
+  assert.deepEqual(await overflowOf(page), { doc: 0, tables: [] });
+  assert.equal(await page.$eval(GS('gs-list'), (e) => e.scrollWidth - e.clientWidth), 0);
+  await page.click(`${GS('gs-row')}[data-symbol="BTC_USD"]`);
+  await page.waitForSelector(GS('gs-action-link'), { visible: true });
+  assert.ok(await page.$eval(GS('gs-action-link'), (e) => { const b = e.getBoundingClientRect(); return b.width > 100 && b.right <= innerWidth + 1 && b.left >= -1; }));
+  assert.equal(await page.$eval(GS('gs-detail'), (e) => e.scrollWidth - e.clientWidth), 0);
+  assert.deepEqual(await latinDigitScan(page), []);
+  await page.click(GS('gs-back'));
+  await page.waitForSelector(GS('gs-row'), { visible: true });
+  await page.click(GS('gs-close'));
+  assert.equal(await gsVisible(page), false);
+  assert.notEqual(await page.evaluate(() => getComputedStyle(document.body).overflow), 'hidden');
+  assert.deepEqual(errors, []);
+});
+
+e2e('جست‌وجوی سراسری: قیمت قدیمی هشدار دارد و هرگز «معتبر/زنده» نمایش داده نمی‌شود', async (page, errors) => {
+  await page.setViewport({ width: 1366, height: 900 });
+  const api0 = await api('GET', '/api/search?q=ZINC');
+  const item = [...api0.groups.flatMap((g) => g.items)].find((i) => i.symbol === 'ZINC');
+  assert.equal(item.status, 'stale', 'ZINC در دادهٔ واقعی قدیمی است');
+  assert.equal(item.live, false);
+  await go(page, 'dashboard');
+  await gsOpenKey(page);
+  await gsSearch(page, 'ZINC');
+  const row = (await gsRows(page)).find((x) => x.symbol === 'ZINC');
+  assert.equal(row.status, 'stale');
+  assert.ok(row.dim, 'قیمت قدیمی کمرنگ/خط‌خورده است');
+  assert.ok(row.text.includes('قیمت قدیمی؛ زنده نیست'));
+  assert.ok(!row.text.includes('معتبر'), 'برچسب «معتبر» روی قیمت قدیمی نباید بیاید');
+  await page.click(`${GS('gs-row')}[data-symbol="ZINC"]`);
+  await page.waitForSelector(GS('gs-detail-price'));
+  const d = await page.$eval(GS('gs-detail-price'), (e) => ({ cls: e.className, t: e.textContent, badges: [...e.querySelectorAll('.badge')].map((b) => b.textContent) }));
+  assert.ok(d.cls.includes('dim') && d.t.includes('«زنده» نیست') && d.t.includes('ارزش‌گذاری'), d.t);
+  assert.deepEqual(d.badges, ['قدیمی'], 'نشان وضعیت فقط «قدیمی» است');
+  // یک نماد معتبر هشدار قدیمی‌بودن ندارد
+  await page.click(GS('gs-back'));
+  await gsSearch(page, 'GOLD_18K_IRR');
+  const ok = (await gsRows(page)).find((x) => x.symbol === 'GOLD_18K_IRR');
+  assert.equal(ok.status, 'valid');
+  assert.ok(!ok.text.includes('زنده نیست') && !ok.dim);
+  assert.deepEqual(errors, []);
+});
+
+e2e('جست‌وجوی سراسری: اتصال نماد به دارایی موجود فقط با تأیید، نمایش وضعیت اتصال و جلوگیری از اتصال تکراری', async (page, errors) => {
+  await page.setViewport({ width: 1366, height: 900 });
+  const a = await gsPostAsset('دارایی آزمون اتصال');
+  const b = await gsPostAsset('دارایی آزمون دوم');
+  const before = await counts();
+  await go(page, 'dashboard');
+  await gsOpenKey(page);
+  await gsSearch(page, 'XRP_IRR');
+  await page.click(`${GS('gs-row')}[data-symbol="XRP_IRR"]`);
+  await page.waitForSelector(GS('gs-action-link'));
+  assert.equal(await page.$eval(GS('gs-action-link'), (e) => e.disabled), false);
+  await page.click(GS('gs-action-link'));
+  await modalOpen(page);
+  assert.equal(await gsVisible(page), false, 'پالت زیر مودال پنهان است');
+  await page.waitForFunction((id) => [...document.querySelectorAll('[data-testid="gs-link-asset"] option')].some((o) => o.value === String(id)), {}, a.id);
+  assert.ok(await page.$(GS('gs-link-portfolio')), 'ابتدا سبد و سپس دارایی انتخاب می‌شود');
+  await page.select(GS('gs-link-asset'), String(a.id));
+  assert.equal(await page.$eval(GS('gs-link-confirm'), (e) => e.disabled), true, 'بدون تأیید صریح فعال نیست');
+  assert.deepEqual((await api('GET', `/api/assets/${a.id}`)).sources, [], 'تا تأیید، اتصالی ثبت نشده');
+  await page.click(GS('gs-link-ack'));
+  assert.equal(await page.$eval(GS('gs-link-confirm'), (e) => e.disabled), false);
+  await page.click(GS('gs-link-confirm'));
+  await modalClosed(page);
+  const src = (await api('GET', `/api/assets/${a.id}`)).sources;
+  assert.equal(src.length, 1);
+  assert.equal(src[0].external_id, 'XRP_IRR');
+  assert.ok(src[0].link.confirmed_at);
+  // پنل برمی‌گردد و وضعیت اتصال را با نام دارایی نشان می‌دهد؛ اتصال و ایجاد تکراری غیرفعال است
+  await page.waitForSelector(GS('gs-link-status'), { visible: true });
+  assert.ok((await page.$eval(GS('gs-link-status'), (e) => e.textContent)).includes('دارایی آزمون اتصال'));
+  assert.equal(await page.$eval(GS('gs-action-link'), (e) => e.disabled), true);
+  assert.equal(await page.$eval(GS('gs-action-create'), (e) => e.disabled), true);
+  // سرور هم اتصال تکراری را رد می‌کند (دارایی دوم)
+  const dup = await fetch(`${BASE}/api/search/link`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: 'XRP_IRR', asset_id: b.id, confirm: true }) });
+  assert.equal(dup.status, 409);
+  assert.deepEqual((await api('GET', `/api/assets/${b.id}`)).sources, []);
+  // هیچ تراکنشی ساخته نشده و موجودی دارایی صفر است
+  assert.deepEqual(await counts(), before);
+  const pf = await api('GET', '/api/portfolio');
+  const row = pf.assets.find((x) => x.id === a.id);
+  assert.ok(!row || Number(row.units) === 0);
+  assert.deepEqual(errors, []);
+  for (const x of [a, b]) await api('POST', `/api/assets/${x.id}/archive`).catch(() => {});
+});
+
+e2e('جست‌وجوی سراسری: ساخت دارایی جدید از روی نماد بدون تراکنش و موجودی و فقط پس از تأیید', async (page, errors) => {
+  await page.setViewport({ width: 1366, height: 900 });
+  const before = await counts();
+  await go(page, 'dashboard');
+  await gsOpenKey(page);
+  await gsSearch(page, 'USDT_IRR');
+  await page.click(`${GS('gs-row')}[data-symbol="USDT_IRR"]`);
+  await page.waitForSelector(GS('gs-action-create'));
+  await page.click(GS('gs-action-create'));
+  await modalOpen(page);
+  assert.ok((await page.$eval('.modal', (e) => e.textContent)).includes('هیچ تراکنش خرید'));
+  assert.equal(await page.$eval(GS('gs-create-confirm'), (e) => e.disabled), true, 'بدون تأیید فعال نیست');
+  await page.$eval(GS('gs-create-name'), (e) => { e.value = ''; });
+  await page.type(GS('gs-create-name'), 'تتر آزمون جست‌وجو');
+  await page.click(GS('gs-create-ack'));
+  assert.deepEqual(await counts(), before, 'تا تأیید نهایی چیزی ساخته نمی‌شود');
+  await page.click(GS('gs-create-confirm'));
+  await modalClosed(page);
+  const all = (await api('GET', '/api/assets?status=all')).assets;
+  const made = all.find((x) => x.name === 'تتر آزمون جست‌وجو');
+  assert.ok(made, 'دارایی ساخته نشد');
+  assert.equal(all.length, before.assets + 1);
+  assert.equal((await api('GET', '/api/transactions')).total, before.tx, 'تراکنشی ساخته نشود');
+  const d = await api('GET', `/api/assets/${made.id}`);
+  assert.equal(d.sources[0].external_id, 'USDT_IRR');
+  assert.equal(Number(d.target_weight), 0);
+  const row = (await api('GET', '/api/portfolio')).assets.find((x) => x.id === made.id);
+  assert.ok(row && Number(row.units) === 0 && Number(row.value || 0) === 0, 'موجودی باید صفر باشد');
+  // دوباره ساختن از همان نماد رد می‌شود
+  await page.waitForSelector(GS('gs-link-status'), { visible: true });
+  assert.equal(await page.$eval(GS('gs-action-create'), (e) => e.disabled), true);
+  assert.deepEqual(errors, []);
+  await api('POST', `/api/assets/${made.id}/archive`).catch(() => {});
+});
+
+e2e('جست‌وجوی سراسری: کار بدون اینترنت، بدون درخواست به بیرون، با Debounce و فقط‌خواندنی', async (page, errors) => {
+  await page.setViewport({ width: 1366, height: 900 });
+  await page.evaluateOnNewDocument(() => Object.defineProperty(navigator, 'onLine', { get: () => false }));
+  const origin = new URL(BASE).origin;
+  const external = []; let searches = 0;
+  await page.setRequestInterception(true);
+  page.on('request', (req) => {
+    const u = req.url();
+    if (!u.startsWith('data:') && !u.startsWith('blob:') && new URL(u).origin !== origin) external.push(u);
+    if (u.includes('/api/search?')) searches += 1;
+    req.continue();
+  });
+  const before = await counts();
+  await go(page, 'dashboard');
+  await gsOpenKey(page);
+  await page.waitForSelector(GS('gs-banner'), { visible: true });
+  assert.ok((await page.$eval(GS('gs-banner'), (e) => e.textContent)).includes('اینترنت قطع است'));
+  searches = 0;
+  await page.type(GS('gs-input'), 'bitcoin', { delay: 20 });   // ۷ حرف پشت‌سر هم
+  await gsWaitQ(page, 'bitcoin');
+  assert.ok(searches <= 2, `Debounce: ${searches} درخواست برای ۷ حرف`);
+  assert.equal((await gsRows(page))[0].symbol, 'BTC_USD', 'جست‌وجو روی دادهٔ ذخیره‌شده کار می‌کند');
+  await page.click(`${GS('gs-row')}[data-symbol="BTC_USD"]`);
+  await page.waitForSelector(GS('gs-detail-price'));
+  for (const tab of ['chart', 'history', 'source']) { await page.click(GS(`gs-tab-${tab}`)); await sleep(500); assert.equal(await page.$('.gs-tabpanel .notice.bad'), null, tab); }
+  assert.deepEqual(external, [], 'مرورگر نباید مستقیم به منبع بیرونی وصل شود');
+  assert.deepEqual(await counts(), before, 'جست‌وجو فقط‌خواندنی است');
+  assert.deepEqual(errors.filter((e) => !e.includes('requestfailed')), []);
 });
 
 // ------------------------------------------------------------------ حالت‌های بارگذاری، خطا و خالی
