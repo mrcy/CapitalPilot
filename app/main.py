@@ -20,6 +20,19 @@ from .routers import analytics, assets, core, data, prices, reports, transaction
 from .services.seed import is_seeded, seed_defaults
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+
+class RevalidatingStaticFiles(StaticFiles):
+    """فایل‌های برنامه همیشه revalidate می‌شوند (ETag)، تا پس از به‌روزرسانی نسخهٔ قدیمی نمایش داده نشود."""
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        if response.status_code in (200, 304):
+            if path.startswith("vendor/"):
+                response.headers["Cache-Control"] = "public, max-age=604800"
+            else:
+                response.headers["Cache-Control"] = "no-cache"
+        return response
 log = logging.getLogger("capitalpilot")
 
 
@@ -88,7 +101,7 @@ def create_app() -> FastAPI:
     def api_404(path: str):
         return JSONResponse(status_code=404, content={"error": {"code": "not_found", "message": "مسیر API یافت نشد.", "details": None}})
 
-    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    app.mount("/static", RevalidatingStaticFiles(directory=STATIC_DIR), name="static")
 
     @app.get("/", include_in_schema=False)
     def index():

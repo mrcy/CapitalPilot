@@ -44,7 +44,7 @@ def plan_status(ds: DataSet, today: date) -> dict:
     for p in sorted(ds.periods, key=lambda p: p.seq):
         actual = actual_by_period.get(p.id, ZERO)
         diff = actual - p.planned
-        due = p.due_date <= today
+        due = p.due_date < today
         if actual >= p.planned and p.planned > 0:
             status = "paid" if diff == 0 else "extra"
         elif actual > 0:
