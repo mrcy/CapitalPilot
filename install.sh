@@ -99,6 +99,7 @@ if grep -qE "[:.]${PORT}\$" <<<"$LISTEN"; then
   if systemd_usable && systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then ok "پورت $PORT را همین سرویس (نصب قبلی) دارد"; else die "پورت $PORT اشغال است؛ با --port پورت دیگری بدهید."; fi
 fi
 SCRATCH="$(mktemp -d)"; trap 'rm -rf "$SCRATCH"' EXIT; PIPERR="$SCRATCH/pip.err"; PROBELOG="$SCRATCH/probe.log"; chmod 755 "$SCRATCH"
+case "$APP_DIR" in /home/*|/root/*) warn "برنامه زیر $APP_DIR است؛ سرویس systemd با ProtectHome اجرا می‌شود و به آن دسترسی ندارد. پیشنهاد: /opt/capitalpilot";; esac
 USE_SYSTEMD=1; systemd_usable || { USE_SYSTEMD=0; warn "systemd در دسترس نیست یا --no-systemd داده شده؛ سرویس ساخته نمی‌شود."; }
 
 # ───────────────────────── ۲) کاربر و پوشه‌ها
@@ -230,8 +231,9 @@ else
   # بدون systemd: یک اجرای آزمایشی کوتاه برای اطمینان از سالم بودن نصب
   as_user "$SERVICE_USER" env "CAPITALPILOT_ENV_FILE=$ENV_FILE" PYTHONDONTWRITEBYTECODE=1 "$APP_DIR/.venv/bin/uvicorn" app.main:app --host 127.0.0.1 --port "$PORT" --workers 1 >"$PROBELOG" 2>&1 &
   PROBE=$!
-  if body="$(health_check "$PORT" "$VER" 30)"; then ok "اجرای آزمایشی سالم بود: $body"; else kill "$PROBE" 2>/dev/null || true; cat "$PROBELOG" >&2; die "اجرای آزمایشی ناموفق بود."; fi
-  kill "$PROBE" 2>/dev/null || true; wait "$PROBE" 2>/dev/null || true
+  stop_probe() { kill "$PROBE" 2>/dev/null || true; pkill -u "$SERVICE_USER" -f "uvicorn app.main:app --host 127.0.0.1 --port $PORT" 2>/dev/null || true; wait "$PROBE" 2>/dev/null || true; }
+  if body="$(health_check "$PORT" "$VER" 30)"; then ok "اجرای آزمایشی سالم بود: $body"; else stop_probe; cat "$PROBELOG" >&2; die "اجرای آزمایشی ناموفق بود."; fi
+  stop_probe
 fi
 
 cat <<DONE
