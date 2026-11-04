@@ -24,7 +24,7 @@ COMMIT="$(git rev-parse HEAD)"
 
 # ───── بررسی محتوای ZIP
 LIST="$(unzip -Z1 "$OUT/$NAME.zip")"
-BAD="$(grep -vxE "CapitalPilot-v${VER}/data/(\.gitkeep)?" <<<"$LIST" | grep -E '(^|/)(\.env|\.git|\.venv|node_modules|__pycache__|\.pytest_cache|\.secret_key)(/|$)|\.(db|sqlite3?|pyc|log|bak)$|-(wal|shm)$|(^|/)data/|(^|/)dist/|(^|/)build/' <<<"$LIST" || true)"
+BAD="$(grep -vxE "CapitalPilot-v${VER}/data/(\.gitkeep)?" <<<"$LIST" | grep -E '(^|/)(\.env|\.git|\.venv|node_modules|__pycache__|\.pytest_cache|\.secret_key)(/|$)|\.(db|sqlite3?|pyc|log|bak)$|-(wal|shm)$|(^|/)data/|(^|/)dist/|(^|/)build/' || true)"
 [ -z "$BAD" ] || { echo "✗ فایل ممنوعه در ZIP:"; echo "$BAD"; exit 1; }
 for f in app/main.py app/manage.py VERSION RELEASE_NOTES_fa.md README.md requirements.txt requirements.lock .env.example Dockerfile docker-compose.yml install.sh update.sh backup.sh restore.sh \
          deploy/capitalpilot.service.tmpl deploy/nginx-capitalpilot.conf.tmpl docs/API.md docs/INSTALL-UBUNTU-24.04.md docs/NGINX-HTTPS.md docs/BACKUP-RESTORE.md docs/PRICE-SOURCES.md app/static/index.html tests/test_release.py; do
