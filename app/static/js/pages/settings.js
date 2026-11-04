@@ -5,9 +5,10 @@ import { badge, buildForm, clear, confirmDialog, downloadBlob, formModal, h, ico
 import { money, num, pct, parseDecimal, faDigits, fmtDateTime } from '../format.js';
 
 export async function render(root) {
-  const [s, assetsRes, backups] = await Promise.all([api.get('/api/settings'), api.get('/api/assets'), api.get('/api/backup/list')]);
+  const [s, assetsRes, backups] = await Promise.all([api.get('/api/settings'), api.get('/api/assets', { page_size: 500, portfolio_id: state.meta.settings.portfolio_id }), api.get('/api/backup/list')]);
   const assets = assetsRes.assets;
   root.append(pageHead('تنظیمات', 'تمام اعداد برنامه سرمایه‌گذاری، ترکیب هدف، واحد پول و پشتیبان‌گیری'));
+  root.append(notice(`بخش‌های «برنامه» و «ترکیب هدف» این صفحه مربوط به سبد پیش‌فرض («${state.meta.settings.portfolio_name}») است. سرمایه، افق و وزن‌های سایر سبدها را در صفحهٔ «سبدها و استراتژی‌ها» تنظیم کنید.`, 'info'));
   root.append(planSection(s), allocationSection(s, assets), platformsSection(), currenciesSection(), backupSection(backups), dangerSection());
 }
 
@@ -81,14 +82,8 @@ function allocationSection(s, assets) {
 }
 
 function platformsSection() {
-  const open = (p) => formModal({
-    title: p ? `ویرایش ${p.name}` : 'پلتفرم جدید', submitLabel: 'ذخیره', values: p || { kind: 'other', is_active: true },
-    fields: [{ name: 'name', label: 'نام پلتفرم', type: 'text', required: true }, { name: 'kind', label: 'نوع', type: 'select', options: [{ value: 'funds', label: 'صندوق‌ها' }, { value: 'digital', label: 'دیجیتال' }, { value: 'other', label: 'سایر' }] },
-      { name: 'is_active', label: 'فعال', type: 'checkbox' }, { name: 'note', label: 'توضیحات', type: 'text', wide: true }],
-    onSubmit: async (x, m) => { const body = { name: x.name, kind: x.kind, is_active: x.is_active, note: x.note || '' }; if (p) await api.put(`/api/platforms/${p.id}`, body); else await api.post('/api/platforms', body); m.close(); await refreshMeta(); reload(); },
-  });
-  return section('پلتفرم‌ها', table([{ label: 'نام', render: (p) => p.name }, { label: 'وضعیت', render: (p) => (p.is_active ? badge('فعال', 'ok') : badge('غیرفعال')) },
-    { label: '', render: (p) => h('button', { class: 'icon-btn', onclick: () => open(p) }, icon('edit')) }], state.meta.platforms), h('div', { style: { marginTop: '10px' } }, h('button', { class: 'btn', onclick: () => open(null) }, icon('plus'), 'پلتفرم جدید')));
+  return section('پلتفرم‌ها', h('p', { class: 'muted', style: { marginTop: 0 } }, 'افزودن، ویرایش، غیرفعال‌سازی و بایگانی پلتفرم‌ها در بخش مستقل «پلتفرم‌ها» انجام می‌شود.'),
+    h('a', { class: 'btn', href: '#/platforms' }, icon('platform'), 'مدیریت پلتفرم‌ها'));
 }
 
 function currenciesSection() {
@@ -113,7 +108,7 @@ function backupSection(backups) {
     try { text = await file.text(); JSON.parse(text); } catch { toast('فایل انتخاب‌شده JSON معتبر نیست.', 'error'); fileInput.value = ''; return; }
     const ok = await confirmDialog({ title: 'بازیابی از پشتیبان', danger: true, confirmLabel: 'بازیابی', message: 'با بازیابی، تمام اطلاعات فعلی با محتوای فایل پشتیبان جایگزین می‌شود. پیش از آن یک نسخه پشتیبان خودکار از وضعیت فعلی گرفته می‌شود. ادامه می‌دهید؟' });
     if (!ok) { fileInput.value = ''; return; }
-    try { const r = await api.postRaw('/api/backup/restore?confirm=true', text); toast('اطلاعات با موفقیت بازیابی شد.', 'success'); await refreshMeta(); reload(); } catch { /* toast نمایش داده شده */ }
+    try { const r = await api.postRaw('/api/backup/restore?confirm=true', text); toast('اطلاعات با موفقیت بازیابی شد.', 'success'); (r?.warnings || []).forEach((w) => toast(w, 'warn', 9000)); await refreshMeta(); reload(); } catch { /* toast نمایش داده شده */ }
     fileInput.value = '';
   });
   return section('پشتیبان‌گیری و بازیابی', h('div', { class: 'page-actions' },

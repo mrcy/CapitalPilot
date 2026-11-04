@@ -51,7 +51,7 @@ export async function render(root) {
     h('button', { class: 'btn', onclick: () => openFxForm({ onDone: reload }) }, icon('plus'), 'ثبت نرخ ارز'),
     h('button', { class: 'btn', onclick: async () => {
       const r = await api.post('/api/prices/fetch');
-      if (!r.results.length) toast(state.meta.price_api_enabled ? 'هیچ دارایی‌ای منبع خودکار ندارد؛ در ویرایش دارایی تنظیم کنید.' : 'دریافت خودکار پیکربندی نشده است؛ قیمت‌ها را دستی ثبت کنید.', 'info', 7000);
+      if (!r.results.length) toast('هیچ دارایی‌ای منبع قیمت خودکار ندارد؛ منبع را در «منابع قیمت» فعال و در ویرایش دارایی متصل کنید.', 'warn');
       r.results.forEach((x) => toast(`${x.asset}: ${x.message}`, x.ok ? 'success' : 'warn', 7000));
       if (r.results.some((x) => x.ok)) reload();
     } }, icon('refresh'), 'دریافت خودکار')));
@@ -69,6 +69,7 @@ export async function render(root) {
   root.append(h('div', { class: 'card' }, table([
     { label: 'دارایی', render: (p) => p.asset }, { label: 'قیمت', class: 'num', render: (p) => `${units(p.price)} ${p.currency === 'IRT' ? '' : p.currency}` },
     { label: 'زمان ثبت', render: (p) => fmtDateTime(p.recorded_at) }, { label: 'منبع', render: (p) => p.source },
+    { label: 'اعتبار', render: (p) => (p.is_valid === false ? h('span', { title: p.validity_note }, badge('نامعتبر', 'bad')) : badge('معتبر', 'ok')) },
     { label: 'تأیید', render: (p) => h('button', { class: 'btn tiny', onclick: async () => { await api.post(`/api/prices/${p.id}/approve${qs({ approved: !p.is_approved })}`); reload(); } }, p.is_approved ? badge('تأییدشده', 'ok') : badge('در انتظار تأیید', 'warn')) },
     { label: '', render: (p) => h('button', { class: 'icon-btn', title: 'حذف', onclick: async () => { if (await confirmDialog({ message: 'این قیمت حذف شود؟', danger: true, confirmLabel: 'حذف' })) { await api.del(`/api/prices/${p.id}`); reload(); } } }, icon('trash')) },
   ], prices, { empty: 'قیمتی ثبت نشده است.' })));

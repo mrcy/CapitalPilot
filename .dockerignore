@@ -5,3 +5,4 @@ data/backups
 data/logs
 tests
 __pycache__
+data/.secret_key

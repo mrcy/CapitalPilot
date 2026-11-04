@@ -102,6 +102,10 @@ export function jalaliYearMonth(iso) {
 }
 
 export const TYPE_LABEL = { buy: 'خرید', sell: 'فروش', deposit: 'واریز سرمایه', withdrawal: 'برداشت سرمایه', dividend: 'سود نقدی', fee: 'کارمزد', adjustment: 'اصلاح موجودی' };
-export const ASSET_TYPE_LABEL = { gold: 'طلا', fund: 'صندوق', index: 'شاخص', digital: 'دیجیتال', cash: 'نقد', other: 'سایر' };
+// برچسب نوع دارایی پویا است: پس از بارگذاری meta از سرور پر می‌شود و نوع‌های تعریف‌شده توسط کاربر را هم شامل می‌شود.
+const _typeLabels = { cash: 'نقد' };
+export const ASSET_TYPE_LABEL = new Proxy(_typeLabels, { get: (t, k) => (typeof k === 'string' ? (t[k] ?? k) : t[k]) });
+export function setAssetTypes(list) { Object.keys(_typeLabels).forEach((k) => delete _typeLabels[k]); _typeLabels.cash = 'نقد'; (list || []).forEach((t) => { _typeLabels[t.key] = t.label; }); }
+export const PROVIDER_STATUS = { ok: ['سالم', 'ok'], error: ['خطا', 'bad'], unknown: ['آزمایش‌نشده', 'warn'], disabled: ['غیرفعال', ''], archived: ['بایگانی', ''] };
 export const REASON_LABEL = { no_price: 'قیمتی ثبت نشده', stale: 'قیمت قدیمی', currency_mismatch: 'ناهم‌خوانی واحد پول', no_fx: 'نرخ ارز ثبت نشده', stale_fx: 'نرخ ارز قدیمی' };
 export const STATUS_LABEL = { paid: 'پرداخت‌شده', extra: 'اضافه‌واریزی', partial: 'ناقص', partial_overdue: 'ناقص و عقب‌افتاده', overdue: 'عقب‌افتاده', due: 'موعد امروز', upcoming: 'در انتظار' };

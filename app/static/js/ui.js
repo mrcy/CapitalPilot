@@ -52,6 +52,14 @@ const ICONS = {
   info: 'M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5M12 8h.01',
   refresh: 'M20 11a8 8 0 10-2.3 5.7M20 5v6h-6',
   back: 'M9 6l6 6-6 6',
+  platform: 'M3 20h18M5 20V9l7-5 7 5v11M9 20v-6h6v6',
+  folder: 'M3 6h6l2 2h10v11H3zM3 11h18',
+  sources: 'M5 12a7 7 0 0114 0M8.5 12a3.5 3.5 0 017 0M12 12h.01M12 15v5M9 20h6',
+  search: 'M11 18a7 7 0 100-14 7 7 0 000 14zM20 20l-4-4',
+  archive: 'M3 5h18v4H3zM5 9v10h14V9M10 13h4',
+  restore: 'M4 12a8 8 0 112.3 5.7M4 18v-6h6',
+  play: 'M7 5l12 7-12 7z',
+  chevron: 'M9 6l6 6-6 6',
 };
 export function icon(name, size = 18) {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -90,7 +98,7 @@ export function modal({ title, body, footer, wide = false, onClose }) {
   dlg.append(
     h('div', { class: 'modal-head' }, h('h3', null, title), h('button', { class: 'icon-btn', 'aria-label': 'بستن', onclick: close }, icon('close'))),
     h('div', { class: 'modal-body' }, body),
-    footer ? h('div', { class: 'modal-foot' }, footer) : null,
+    ...(footer ? [h('div', { class: 'modal-foot' }, footer)] : []),
   );
   overlay.append(dlg);
   overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
@@ -184,6 +192,7 @@ export function buildForm(fields, values = {}, { onChange } = {}) {
     onChange && onChange(vals, api);
   };
   for (const f of fields) {
+    if (f.type === 'section') { const d = h('div', { class: 'form-section' }, f.label); rows[f.name] = d; form.append(d); continue; }
     let control;
     const v = values[f.name];
     if (f.type === 'select') {
@@ -192,7 +201,7 @@ export function buildForm(fields, values = {}, { onChange } = {}) {
     } else if (f.type === 'checkbox') {
       control = h('input', { type: 'checkbox', name: f.name }); control.checked = !!v;
     } else if (f.type === 'textarea') {
-      control = h('textarea', { name: f.name, rows: 2, placeholder: f.placeholder || '' }); control.value = v || '';
+      control = h('textarea', { name: f.name, rows: 2, placeholder: f.placeholder || '', dir: f.ltr ? 'ltr' : undefined, class: f.ltr ? 'ltr-input' : '' }); control.value = v || '';
     } else if (f.type === 'date') {
       control = dateField(f.name, v, { required: f.required !== false });
     } else if (f.type === 'datetime') {
@@ -202,7 +211,7 @@ export function buildForm(fields, values = {}, { onChange } = {}) {
       control = h('div', { class: 'datetime-field' }, date, time); control.date = date; control.time = time;
     } else {
       const isNum = f.type === 'decimal' || f.type === 'int';
-      control = h('input', { type: 'text', name: f.name, inputmode: isNum ? 'decimal' : 'text', placeholder: f.placeholder || '', dir: isNum ? 'ltr' : undefined, class: isNum ? 'ltr-input' : '' });
+      control = h('input', { type: f.inputType || 'text', name: f.name, inputmode: isNum ? 'decimal' : 'text', placeholder: f.placeholder || '', dir: (isNum || f.ltr) ? 'ltr' : undefined, class: (isNum || f.ltr) ? 'ltr-input' : '' });
       control.value = v === undefined || v === null ? '' : (isNum ? faDigits(v) : v);
     }
     refs[f.name] = control;
@@ -281,7 +290,13 @@ export function pageHead(title, subtitle, ...actions) {
 export const loadingBox = () => h('div', { class: 'loading' }, h('div', { class: 'spinner' }), h('span', null, 'در حال بارگذاری…'));
 export const emptyState = (title, text, action) => h('div', { class: 'card empty-state' }, h('h3', null, title), h('p', { class: 'muted' }, text), action || null);
 export const notice = (text, kind = 'warn') => h('div', { class: `notice ${kind}` }, icon(kind === 'info' ? 'info' : 'alert', 18), h('div', null, text));
-export const typeDot = (t) => h('span', { class: `type-dot t-${t}`, 'aria-hidden': 'true' });
+const TYPE_COLORS = { gold: '#e8b84a', blue: '#4aa3ff', green: '#2fd29a', red: '#ff5d73', slate: '#8fa0c3' };
+export function typeColor(t) {
+  const info = state.meta?.asset_types?.find((x) => x.key === t);
+  const c = info?.color || '';
+  return c.startsWith('#') ? c : (TYPE_COLORS[c] || ({ gold: '#e8b84a', digital: '#4aa3ff', index: '#4aa3ff', fund: '#6f86ff' }[t]) || '#62759d');
+}
+export const typeDot = (t) => h('span', { class: `type-dot t-${t}`, style: { background: typeColor(t) }, 'aria-hidden': 'true' });
 
 export function downloadBlob(blob, filename) {
   const a = h('a', { href: URL.createObjectURL(blob), download: filename });

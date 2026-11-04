@@ -1,11 +1,13 @@
 // تنظیمات و ابزارهای نمودار (Chart.js، نسخه محلی بدون CDN)
 import { compact, fmtDate, money, num, pct, isNil } from './format.js';
+import { typeColor } from './ui.js';
 
 export const COLORS = {
   green: '#2fd29a', red: '#ff5d73', gold: '#e8b84a', blue: '#4aa3ff', indigo: '#6f86ff', teal: '#34c5c0',
   slate: '#8d9bb8', grid: 'rgba(140,160,205,.10)', text: '#9fb0d0',
 };
-export const TYPE_COLOR = { gold: COLORS.gold, digital: COLORS.blue, index: '#7ab8ff', fund: '#6f86ff', cash: '#5f6f91', other: '#8d9bb8' };
+// رنگ نوع دارایی از تنظیمات نوع (پویا) خوانده می‌شود
+export const TYPE_COLOR = new Proxy({}, { get: (_, k) => (k === 'cash' ? '#5f6f91' : typeColor(String(k))) });
 const live = new Map();
 
 export function setupCharts() {

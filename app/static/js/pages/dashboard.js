@@ -1,5 +1,7 @@
 import { api } from '../api.js';
 import { badge, h, icon, kpi, notice, pageHead, emptyState } from '../ui.js';
+import { fmtDateTime } from '../format.js';
+import { currentPortfolio } from '../state.js';
 import { chartCard, barConfig, doughnutConfig, groupedBarConfig, lineConfig, COLORS, TYPE_COLOR } from '../charts.js';
 import { money, num, pct, signedPct, pnlClass, signedMoney, fmtDate, ASSET_TYPE_LABEL, compact } from '../format.js';
 import { openTxForm } from './_txform.js';
@@ -10,7 +12,7 @@ const LEVEL = { ok: ['ok', 'در محدوده عادی'], watch: ['warn', 'تو�
 export async function render(root) {
   const d = await api.get('/api/dashboard');
   const c = d.cards;
-  root.append(pageHead('داشبورد مدیریتی', `وضعیت سرمایه شما تا ${fmtDate(d.as_of)}`,
+  root.append(pageHead('داشبورد مدیریتی', `سبد «${d.portfolio?.name || currentPortfolio()?.name || ''}» — وضعیت سرمایه شما تا ${fmtDate(d.as_of)}`,
     h('button', { class: 'btn primary', onclick: () => openTxForm({ onDone: reload }) }, icon('plus'), 'ثبت تراکنش'),
     h('a', { class: 'btn', href: '#/prices' }, icon('price'), 'ثبت قیمت روز')));
   if (!d.has_data) {
@@ -33,6 +35,27 @@ export async function render(root) {
     kpi({ label: 'درصد تحقق برنامه', hint: 'مجموع واریزی‌ها نسبت به کل برنامه افق سرمایه‌گذاری', value: c.plan_realization_pct === null ? '—' : pct(c.plan_realization_pct, 1), progress: c.plan_realization_pct, sub: `هدف برنامه: ${money(c.plan_target_total)}` }),
     kpi({ label: 'فاصله تا هدف سرمایه‌گذاری', hint: 'هدف برنامه منهای مجموع واریزی‌ها', value: money(Math.max(0, Number(c.gap_to_target))), sub: Number(c.gap_to_target) < 0 ? `${money(-c.gap_to_target)} بیش از برنامه واریز شده` : `تا ارزش هدف: ${money(c.gap_to_target_value)}`, tone: 'gold' }),
   ));
+  // مدیریت دارایی‌ها و وضعیت منابع قیمت
+  const mg = d.management, mk = mg.market, pv = mk.providers;
+  const enabledNonManual = pv.error + pv.ok;
+  const errCard = mk.recent_errors?.length
+    ? h('div', { class: 'card', style: { marginTop: '12px' } }, h('b', null, 'آخرین خطاهای دریافت قیمت'),
+      h('div', { style: { marginTop: '8px' } }, mk.recent_errors.slice(0, 4).map((e) => h('div', { class: 'log-line bad' },
+        h('div', null, h('b', null, e.provider || '—'), e.asset ? ` — ${e.asset}` : ''), h('div', null, e.message), h('div', { class: 't' }, fmtDateTime(e.ts))))))
+    : null;
+  const kpis = [
+    kpi({ label: 'کل دارایی‌ها', value: num(mg.total_assets), sub: mg.archived_assets ? `${num(mg.archived_assets)} بایگانی‌شده` : 'بدون بایگانی', tone: 'accent' }),
+    kpi({ label: 'دارایی‌های فعال', value: num(mg.active_assets), tone: 'green' }),
+    kpi({ label: 'تعداد پلتفرم‌ها', value: num(mg.platform_count), sub: `${num(mg.portfolio_count)} سبد فعال` }),
+    kpi({ label: 'وضعیت منابع قیمت', hint: 'منابع فعال: سالم / دارای خطا', value: `${num(pv.ok)} سالم${pv.error ? ` • ${num(pv.error)} خطا` : ''}`, sub: `${num(pv.enabled)} فعال از ${num(pv.total)} منبع`, tone: pv.error ? 'red' : (pv.ok ? 'green' : 'gold') }),
+    kpi({ label: 'قیمت‌های کهنه', hint: 'دارایی‌های فعالی که قیمت معتبر امروز ندارند', value: num(mk.stale_prices + mk.missing_prices), sub: `${num(mk.stale_prices)} کهنه، ${num(mk.missing_prices)} بدون قیمت`, tone: (mk.stale_prices + mk.missing_prices) ? 'gold' : 'green' }),
+    kpi({ label: 'آخرین به‌روزرسانی خودکار', value: mk.last_update_at ? fmtDateTime(mk.last_update_at) : '—', sub: `${num(mk.errors_24h)} خطای دریافت در ۲۴ ساعت`, tone: mk.errors_24h ? 'red' : '' }),
+  ];
+  root.append(h('div', { class: 'market-block' },
+    h('h2', { class: 'section-title' }, 'دارایی‌ها و منابع قیمت', h('a', { href: '#/sources', style: { fontSize: '13px', marginRight: 'auto' } }, 'مدیریت منابع ←')),
+    h('div', { class: 'grid kpis' }, kpis),
+    mk.stale_assets?.length ? notice(`قیمت معتبر ندارند و در ارزش کل لحاظ نشده‌اند: ${mk.stale_assets.join('، ')}`, 'warn') : null,
+    errCard));
   // وضعیت ریسک + برنامه
   const [lk, lt] = LEVEL[d.risk.status.level] || LEVEL.unknown;
   root.append(h('div', { class: 'grid cols-2', style: { marginTop: '14px' } },

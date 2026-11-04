@@ -32,9 +32,6 @@ class Settings(BaseSettings):
     # دریافت خودکار قیمت (اختیاری، پیش‌فرض غیرفعال).
     # کلید API فقط در سمت سرور نگهداری می‌شود و هرگز به مرورگر ارسال نمی‌شود.
     price_api_allowed_hosts: str = ""  # لیست میزبان‌های مجاز، جداشده با ویرگول
-    price_api_key: str = Field(default="", repr=False)
-    price_api_key_header: str = "Authorization"
-    price_api_timeout_seconds: float = 8.0
     price_allow_private_hosts: bool = False  # فقط برای منبع قیمت داخل شبکهٔ خودتان (پیش‌فرض: مسدود)
 
     # رمزنگاری کلیدهای API ذخیره‌شده در دیتابیس؛ اگر خالی باشد کلید تصادفی در data/.secret_key ساخته می‌شود.

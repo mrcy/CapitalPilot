@@ -1,5 +1,5 @@
 // نقطه ورود رابط کاربری: مسیریابی، منو و بارگذاری صفحات
-import { refreshMeta, state } from './state.js';
+import { refreshMeta, setPortfolio, state } from './state.js';
 import { clear, closeAllModals, h, icon, loadingBox, notice } from './ui.js';
 import { destroyAll, setupCharts } from './charts.js';
 import { fmtDate, todayISO } from './format.js';
@@ -8,11 +8,14 @@ const ROUTES = [
   { path: 'dashboard', title: 'داشبورد', icon: 'dashboard', load: () => import('./pages/dashboard.js') },
   { path: 'portfolio', title: 'سبد سرمایه‌گذاری', icon: 'portfolio', load: () => import('./pages/portfolio.js') },
   { path: 'assets', title: 'دارایی‌ها', icon: 'assets', load: () => import('./pages/assets.js') },
+  { path: 'platforms', title: 'پلتفرم‌ها', icon: 'platform', load: () => import('./pages/platforms.js') },
+  { path: 'portfolios', title: 'سبدها و استراتژی‌ها', icon: 'folder', load: () => import('./pages/portfolios.js') },
   { path: 'transactions', title: 'تراکنش‌ها', icon: 'tx', load: () => import('./pages/transactions.js') },
   { path: 'contributions', title: 'واریزی‌های ماهانه', icon: 'calendar', load: () => import('./pages/contributions.js') },
   { path: 'rebalance', title: 'پیشنهاد خرید', icon: 'target', load: () => import('./pages/rebalance.js') },
   { path: 'risk', title: 'مدیریت ریسک', icon: 'shield', load: () => import('./pages/risk.js') },
   { path: 'reports', title: 'گزارش‌ها', icon: 'report', load: () => import('./pages/reports.js') },
+  { path: 'sources', title: 'منابع قیمت', icon: 'sources', load: () => import('./pages/sources.js') },
   { path: 'prices', title: 'قیمت‌ها و نرخ ارز', icon: 'price', load: () => import('./pages/prices.js') },
   { path: 'settings', title: 'تنظیمات', icon: 'settings', load: () => import('./pages/settings.js') },
 ];
@@ -60,6 +63,16 @@ export async function navigate() {
   }
 }
 export const reload = () => navigate();
+// بارگذاری دوبارهٔ meta (پلتفرم‌ها، انواع، سبدها) و سپس صفحه؛ پس از تغییر ساختار مدیریت صدا زده می‌شود.
+export async function reloadAll() { await refreshMeta(); buildSwitcher(); return navigate(); }
+
+function buildSwitcher() {
+  const sel = document.getElementById('pf-switch');
+  clear(sel);
+  state.meta.portfolios.filter((p) => !p.is_archived).forEach((p) => sel.append(h('option', { value: p.id }, p.name)));
+  sel.value = String(state.portfolioId);
+  document.getElementById('pf-wrap').hidden = sel.options.length < 2;
+}
 
 async function boot() {
   setupCharts();
@@ -69,6 +82,8 @@ async function boot() {
   buildNav();
   try {
     await refreshMeta();
+    buildSwitcher();
+    document.getElementById('pf-switch').addEventListener('change', (e) => { setPortfolio(Number(e.target.value)); navigate(); });
     document.getElementById('top-meta').textContent = fmtDate(todayISO());
     document.getElementById('side-date').textContent = `امروز: ${fmtDate(todayISO())}`;
   } catch (e) {

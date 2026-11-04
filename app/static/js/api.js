@@ -1,5 +1,10 @@
 // لایه ارتباط با Backend (REST). تمام محاسبات مالی در سرور انجام می‌شود.
 import { toast } from './ui.js';
+import { state } from './state.js';
+
+// نقطه‌های انتهایی که به سبد انتخاب‌شده وابسته‌اند؛ شناسهٔ سبد خودکار اضافه می‌شود.
+const SCOPED = ['/api/dashboard', '/api/portfolio', '/api/risk', '/api/rebalance', '/api/contributions', '/api/transactions', '/api/assets', '/api/reports'];
+const isScoped = (url) => SCOPED.some((p) => url === p || url.startsWith(p + '/') || url.startsWith(p + '?')) && !/\/api\/assets\/\d+\/(purge|price|archive|restore|active|dependencies|refresh)/.test(url);
 
 export class ApiError extends Error {
   constructor(message, status, code, details) { super(message); this.status = status; this.code = code; this.details = details; }
@@ -38,9 +43,14 @@ export function qs(params = {}) {
   return s ? `?${s}` : '';
 }
 
+const scope = (url, params) => (state.portfolioId && isScoped(url) && !(params && 'portfolio_id' in params) ? { ...params, portfolio_id: state.portfolioId } : params);
 export const api = {
-  get: (url, params, opts) => request('GET', url + qs(params), undefined, opts),
-  post: (url, body, opts) => request('POST', url, body ?? {}, opts),
+  get: (url, params, opts) => request('GET', url + qs(scope(url, params)), undefined, opts),
+  post: (url, body, opts) => {
+    if (state.portfolioId && url === '/api/transactions' && body && body.portfolio_id === undefined) body = { ...body, portfolio_id: state.portfolioId };
+    if (state.portfolioId && /^\/api\/contributions\/\d+\/record$/.test(url)) url += qs({ portfolio_id: state.portfolioId });
+    return request('POST', url, body ?? {}, opts);
+  },
   put: (url, body, opts) => request('PUT', url, body, opts),
   patch: (url, body, opts) => request('PATCH', url, body, opts),
   del: (url, opts) => request('DELETE', url, undefined, opts),

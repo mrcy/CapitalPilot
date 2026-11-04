@@ -8,8 +8,9 @@ const ASSET_TYPES = ['buy', 'sell'];
 
 export async function openTxForm({ tx = null, defaults = {}, onDone } = {}) {
   const [assetsRes, plan] = await Promise.all([api.get('/api/assets'), api.get('/api/contributions')]);
-  const assets = assetsRes.assets.filter((a) => a.is_active || (tx && tx.asset_id === a.id));
-  const platforms = state.meta.platforms.filter((p) => p.is_active || (tx && tx.platform_id === p.id));
+  // فقط دارایی‌های عضو سبد فعلی (یا دارای موجودی/تراکنش) و غیربایگانی؛ دارایی بایگانی‌شده فقط برای فروش موجودی باقی‌مانده یا ویرایش تراکنش قدیمی
+  const assets = assetsRes.assets.filter((a) => (tx && tx.asset_id === a.id) || (!a.is_archived && a.is_active && a.in_portfolio) || (a.is_archived && Number(a.position?.units) > 0));
+  const platforms = state.meta.platforms.filter((p) => (p.is_active && !p.is_archived) || (tx && tx.platform_id === p.id));
   const byId = Object.fromEntries(assets.map((a) => [a.id, a]));
   const periodLabel = (p) => (p.seq === 0 ? 'سرمایه اولیه' : `واریزی ماه ${num(p.seq)}`) + ` — ${p.label}`;
   const v = { tx_type: 'buy', tx_date: todayISO(), record_price: true, ...defaults, ...(tx ? {
@@ -23,7 +24,7 @@ export async function openTxForm({ tx = null, defaults = {}, onDone } = {}) {
     { name: 'tx_type', label: 'نوع تراکنش', type: 'select', required: true, options: Object.entries(TYPE_LABEL).map(([value, label]) => ({ value, label })) },
     { name: 'tx_date', label: 'تاریخ', type: 'date', required: true },
     { name: 'asset_id', label: 'دارایی', type: 'select', numeric: true, required: false,
-      show: (x) => !['deposit', 'withdrawal'].includes(x.tx_type), options: [{ value: '', label: '— انتخاب کنید —' }, ...assets.map((a) => ({ value: a.id, label: `${a.name} (${a.platform})` }))] },
+      show: (x) => !['deposit', 'withdrawal'].includes(x.tx_type), options: [{ value: '', label: '— انتخاب کنید —' }, ...assets.map((a) => ({ value: a.id, label: `${a.name} (${a.platform})${a.is_archived ? ' — بایگانی' : ''}` }))] },
     { name: 'platform_id', label: 'پلتفرم', type: 'select', numeric: true, required: false,
       show: (x) => ['deposit', 'withdrawal'].includes(x.tx_type) || (['dividend', 'fee', 'adjustment'].includes(x.tx_type) && !x.asset_id),
       options: platforms.map((p) => ({ value: p.id, label: p.name })) },
