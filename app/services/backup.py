@@ -101,6 +101,9 @@ def validate_backup(data: dict) -> dict[str, list[dict]]:
         parsed[name] = out
     if not parsed["app_settings"]:
         raise ValidationFailure("تنظیمات در فایل پشتیبان وجود ندارد.")
+    for r in parsed["prices"]:  # پشتیبان‌های قدیمی‌تر از ۲٫۱ ستون origin ندارند
+        if "origin" not in r:
+            r["origin"] = "online" if (r.get("provider_id") or (r.get("fetched_at") and (r.get("price_kind") or "") != "manual")) else "manual"
     # بررسی سازگاری دفتر کل پیش از هر تغییری در دیتابیس
     recs = []
     from .finance.types import TxRec

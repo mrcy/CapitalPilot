@@ -19,6 +19,7 @@ REASONS = {
     "currency_mismatch": "واحد پول قیمت‌های ثبت‌شده با واحد پول دارایی هم‌خوان نیست",
     "no_fx": "نرخ ارز تأییدشده‌ای ثبت نشده است",
     "stale_fx": "نرخ ارز ثبت‌شده قدیمی است",
+    "conflict": "اختلاف غیرعادی بین منابع قیمت؛ تا تصمیم شما (قیمت دستی یا تأیید یک قیمت) استفاده نمی‌شود",
 }
 
 
@@ -76,6 +77,8 @@ class PriceBook:
         age = (as_of.date() - rec.recorded_at.date()).days
         base = dict(currency=asset.price_currency, recorded_at=rec.recorded_at, age_days=age,
                     last_price=rec.price, last_recorded_at=rec.recorded_at)
+        if rec.flag == "conflict":
+            return Quote(False, reason="conflict", **base)
         if rec.currency != asset.price_currency:
             return Quote(False, reason="currency_mismatch", **base)
         if age > self.max_age:

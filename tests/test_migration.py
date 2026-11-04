@@ -64,7 +64,7 @@ def test_v1_database_migrates_losslessly(v1_engine):
         tx_before = c.execute(text("select id, asset_id, platform_id, tx_type, tx_date, quantity, unit_price, fee, total_amount from transactions order by id")).fetchall()
     assert "schema_migrations" not in inspect(v1_engine).get_table_names()
     info = run_migrations(v1_engine)
-    assert info["fresh"] is False and info["applied"] == [1, 2] and info["backup"]
+    assert info["fresh"] is False and info["applied"] == [1, 2, 3] and info["backup"]
     from app.config import get_settings
     assert (get_settings().backup_dir / info["backup"]).exists()
     # ردیف‌ها و مقادیر تراکنش‌ها دقیقاً حفظ شده‌اند
@@ -95,6 +95,10 @@ def test_v1_database_migrates_losslessly(v1_engine):
         assert _eq(exp["portfolio"], got_pf)
         assert set(got_pf) == set(exp["portfolio"])
         _subset(exp["dashboard_cards"], _jsonable(summary.dashboard(ds, now))["cards"])
+    # v2.1: ستون‌های کیفیت قیمت — قیمت‌های v1 همگی دستی‌اند و با مقدار اصلی حفظ شده‌اند
+    with v1_engine.connect() as c:
+        rows = c.execute(text("select origin, is_valid, raw_price, user_confirmed, quality_flags, via from prices")).fetchall()
+        assert rows and all(r[0] == "manual" and r[1] == 1 and r[2] is None and r[3] == 0 and r[4] == "[]" for r in rows)
     again = run_migrations(v1_engine)
     assert again["applied"] == [] and again["backup"] is None
 

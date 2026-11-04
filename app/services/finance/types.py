@@ -58,6 +58,7 @@ class PriceRec:
     recorded_at: datetime
     approved: bool = True
     source: str = "manual"
+    flag: str = ""  # "conflict": اختلاف غیرعادی منابع؛ قیمت وارد ارزش‌گذاری نمی‌شود
 
 
 @dataclass(frozen=True)

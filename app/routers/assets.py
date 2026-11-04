@@ -191,7 +191,7 @@ def set_price_sources(asset_id: int, sources: list[PriceSourceIn], db: Session =
 
 
 @router.post("/{asset_id}/refresh-price")
-def refresh_price(asset_id: int, db: Session = Depends(get_db)):
+def refresh_price(asset_id: int, all_sources: bool = False, db: Session = Depends(get_db)):
     from ..services.marketdata.engine import get_engine
     a = _get(db, asset_id)
-    return get_engine().refresh_asset(db, a, force=True)
+    return get_engine().refresh_asset(db, a, force=True, all_sources=all_sources)

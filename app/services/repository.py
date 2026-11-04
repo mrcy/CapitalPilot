@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from .. import models as m
 from ..errors import NotFoundError
+from .clock import now_local
 from .finance.plan import generate_schedule
 from .finance.types import (
     AssetRec, Config, DataSet, FxRec, PlanRec, PlatformRec, PriceRec, TxRec,
@@ -84,6 +85,28 @@ def effective_weights(pf: m.Portfolio, members: list[m.PortfolioAsset]) -> dict[
     return {pa.asset_id: pa.target_weight for pa in active}
 
 
+def _price_recs(db: Session, asset_ids: set[int], max_age_days: int) -> list[PriceRec]:
+    """قیمت‌های قابل‌استفاده در ارزش‌گذاری (تأییدشده و معتبر). اگر جدیدترین قیمت یک دارایی در «اختلاف غیرعادی منابع» باشد،
+    همان رکورد با flag=conflict علامت می‌خورد تا قیمتی خودسرانه انتخاب نشود (لایهٔ کیفیت)."""
+    if not asset_ids:
+        return []
+    from .marketdata import quality
+    now = now_local()
+    rows = list(db.scalars(select(m.Price).where(m.Price.asset_id.in_(asset_ids), m.Price.is_valid.is_(True))))
+    recent: dict[int, list] = {}
+    for p in rows:
+        if (now.date() - p.recorded_at.date()).days <= max_age_days:
+            recent.setdefault(p.asset_id, []).append(p)
+    conflicts = quality.conflict_asset_ids(recent, now, max_age_days)
+    flagged: set[int] = set()
+    for aid in conflicts:
+        approved = [p for p in recent[aid] if p.is_approved]
+        if approved:
+            flagged.add(max(approved, key=lambda p: (p.recorded_at, p.id)).id)
+    return [PriceRec(p.id, p.asset_id, p.price, p.currency, p.recorded_at, p.is_approved, p.source, "conflict" if p.id in flagged else "")
+            for p in rows if p.is_approved]
+
+
 def load_dataset(db: Session, portfolio_id: int | None = None) -> DataSet:
     pf = resolve_portfolio(db, portfolio_id)
     cfg = config_from_row(get_settings_row(db), pf)
@@ -103,9 +126,7 @@ def load_dataset(db: Session, portfolio_id: int | None = None) -> DataSet:
         assets.append(asset_rec(a, weights.get(a.id, Decimal(0)) if active or pa else Decimal(0), active))
     asset_ids = {a.id for a in assets}
     used_platforms = {a.platform_id for a in assets} | {t.platform_id for t in txs}
-    prices = [PriceRec(p.id, p.asset_id, p.price, p.currency, p.recorded_at, p.is_approved and p.is_valid, p.source)
-              for p in db.scalars(select(m.Price).where(m.Price.asset_id.in_(asset_ids), m.Price.is_approved.is_(True),
-                                                        m.Price.is_valid.is_(True)))] if asset_ids else []
+    prices = _price_recs(db, asset_ids, cfg.max_price_age_days)
     periods = db.scalars(select(m.PlanPeriod).where(m.PlanPeriod.portfolio_id == pf.id))
     return DataSet(
         config=cfg,

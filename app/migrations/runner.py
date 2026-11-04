@@ -22,6 +22,7 @@ log = logging.getLogger("capitalpilot.migrations")
 MIGRATIONS = [
     (1, "baseline-v1", steps.m001_baseline),
     (2, "dynamic-management-portfolios-market-data", steps.m002_dynamic_management),
+    (3, "price-quality-engine", steps.m003_price_quality),
 ]
 LATEST_VERSION = MIGRATIONS[-1][0]
 

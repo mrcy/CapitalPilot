@@ -121,3 +121,14 @@ def m002_dynamic_management(engine: Engine) -> None:
         db.commit()
     _rebuild_plan_periods(engine)
     _price_dedupe_index(engine)
+
+
+def m003_price_quality(engine: Engine) -> None:
+    """نسخهٔ ۲٫۱: ستون‌های کنترل کیفیت (با sync_columns افزوده شده‌اند). تعیین origin برای قیمت‌های موجود (بدون حذف/تغییر قیمت)."""
+    with engine.begin() as c:
+        # قیمت‌های دریافت‌شده از منبع آنلاین (حتی اگر منبعشان بعداً حذف شده باشد) = online؛ بقیه دستی
+        c.execute(text("UPDATE prices SET origin = 'online' WHERE (provider_id IS NOT NULL OR (fetched_at IS NOT NULL AND price_kind <> 'manual')) "
+                       "AND (origin IS NULL OR origin = '' OR origin = 'manual')"))
+        c.execute(text("UPDATE prices SET origin = 'manual' WHERE origin IS NULL OR origin = ''"))
+        # قیمت خام و ردپای تبدیل برای قیمت‌های آنلاین قدیمی ناشناخته است؛ جعل نمی‌کنیم
+        c.execute(text("UPDATE prices SET raw_unit = '' WHERE raw_unit IS NULL"))

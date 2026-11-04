@@ -220,6 +220,14 @@ class Price(Base):
     price_kind: Mapped[str] = mapped_column(String(16), default="")  # last | close | nav | manual
     is_valid: Mapped[bool] = mapped_column(Boolean, default=True)
     validity_note: Mapped[str] = mapped_column(Text, default="")
+    # --- کنترل کیفیت (نسخهٔ ۲٫۱) ---
+    origin: Mapped[str] = mapped_column(String(8), default="manual")  # manual | online (مستقل از provider_id که با حذف منبع خالی می‌شود)
+    raw_price: Mapped[Decimal | None] = mapped_column(DecimalType, nullable=True)  # قیمت خام منبع قبل از تبدیل واحد
+    raw_unit: Mapped[str] = mapped_column(String(16), default="")
+    conversion_note: Mapped[str] = mapped_column(Text, default="")  # مثال: «۱۲۳۰۰۰ IRR ÷ ۱۰ = ۱۲۳۰۰ IRT»
+    quality_flags: Mapped[str] = mapped_column(Text, default="[]")  # JSON: ["jump","time_lag","no_source_time",...]
+    via: Mapped[str] = mapped_column(Text, default="[]")  # JSON: زنجیرهٔ منابعی که تا رسیدن به این قیمت امتحان شدند
+    user_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)  # تأیید صریح کاربر (حل اختلاف منابع)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     asset: Mapped[Asset] = relationship()
 
@@ -302,6 +310,7 @@ class PriceFetchLog(Base):
     asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id"), nullable=True, index=True)
     ok: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String(16), default="")  # ok duplicate stale invalid error rate_limited
+    code: Mapped[str] = mapped_column(String(32), default="")  # کد خطای ارائه‌دهنده (currency_mismatch, network, ...)
     message: Mapped[str] = mapped_column(Text, default="")
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     price: Mapped[Decimal | None] = mapped_column(DecimalType, nullable=True)

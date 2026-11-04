@@ -34,11 +34,11 @@ def create_price(db: Session, p: dict) -> m.Price:
     if currency != asset.price_currency:
         raise ValidationFailure(f"واحد پول قیمت باید «{asset.price_currency}» (واحد پول دارایی) باشد.")
     when = _check_time(p.get("recorded_at"))
-    dup = db.scalar(select(m.Price.id).where(m.Price.asset_id == asset.id, m.Price.provider_id.is_(None),
+    dup = db.scalar(select(m.Price.id).where(m.Price.asset_id == asset.id, m.Price.origin == "manual",
                                              m.Price.price == p["price"], m.Price.recorded_at == when))
     if dup:
         raise ConflictError("این قیمت با همین زمان قبلاً برای این دارایی ثبت شده است (جلوگیری از ثبت تکراری).", code="duplicate_price")
-    row = m.Price(asset_id=asset.id, price=p["price"], currency=currency, recorded_at=when, price_kind="manual",
+    row = m.Price(asset_id=asset.id, price=p["price"], currency=currency, recorded_at=when, price_kind="manual", origin="manual",
                   source=p.get("source") or "manual", is_approved=p.get("is_approved", True), note=p.get("note", ""))
     db.add(row)
     db.commit()

@@ -23,28 +23,11 @@ from ..clock import now_local
 from . import service
 from .base import PriceProvider, ProviderError, Quote
 from .providers import build_provider
+import json
 
 log = logging.getLogger("capitalpilot.marketdata")
 CACHE_TTL_SECONDS = 15.0
-FUTURE_TOLERANCE = timedelta(minutes=10)
-UNIT_ALIASES = {"TOMAN": "IRT", "TMN": "IRT", "RIAL": "IRR", "RLS": "IRR", "تومان": "IRT", "ریال": "IRR"}
-
-
-def norm_unit(u: str) -> str:
-    u = (u or "").strip().upper()
-    return UNIT_ALIASES.get(u, UNIT_ALIASES.get(u.lower(), u))
-
-
-def convert_unit(price: Decimal, unit: str, target: str) -> Decimal:
-    """تبدیل واحد قیمت (ریال↔تومان، ضریب ۱۰). تبدیل ارز خارجی اینجا انجام نمی‌شود (نرخ ارز جداگانه ثبت می‌شود)."""
-    u, t = norm_unit(unit), norm_unit(target)
-    if u == t:
-        return price
-    if u == "IRR" and t == "IRT":
-        return price / 10
-    if u == "IRT" and t == "IRR":
-        return price * 10
-    raise ProviderError(f"واحد قیمت منبع ({u}) با واحد دارایی ({t}) سازگار نیست؛ «واحد ورودی» منبع یا واحد دارایی را اصلاح کنید.", "currency_mismatch")
+from .quality import FUTURE_TOLERANCE, Assessment, assess_quote, convert_unit, conversion_trace, norm_unit  # noqa: E402,F401
 
 
 class MarketDataEngine:
@@ -113,9 +96,9 @@ class MarketDataEngine:
 
     # ------------------------------------------------------------ ثبت وضعیت
     def _log(self, db: Session, pv: m.PriceProvider | None, asset: m.Asset | None, ok: bool, status: str, message: str,
-             latency: int | None = None, price: Decimal | None = None, now: datetime | None = None) -> None:
+             latency: int | None = None, price: Decimal | None = None, now: datetime | None = None, code: str = "") -> None:
         db.add(m.PriceFetchLog(ts=now or now_local(), provider_id=pv.id if pv else None, asset_id=asset.id if asset else None,
-                               ok=ok, status=status, message=message[:1000], latency_ms=latency, price=price))
+                               ok=ok, status=status, message=message[:1000], latency_ms=latency, price=price, code=code[:32]))
 
     def _touch(self, pv: m.PriceProvider, src: m.AssetPriceSource | None, ok: bool, err: str, latency: int | None, now: datetime) -> None:
         pv.last_attempt_at = now
@@ -134,12 +117,26 @@ class MarketDataEngine:
 
     # ------------------------------------------------------------ ذخیرهٔ قیمت
     def _store(self, db: Session, asset: m.Asset, pv: m.PriceProvider, q: Quote, price: Decimal, valid: bool, note: str,
-               now: datetime) -> tuple[str, m.Price | None]:
+               now: datetime, assessed: Assessment | None = None) -> tuple[str, m.Price | None]:
+        """ذخیرهٔ قیمت آنلاین. همیشه با منبع (نام و شناسه)، زمان دریافت، قیمت خام و ردپای تبدیل؛ بدون این‌ها ذخیره نمی‌شود."""
+        if not pv.name:
+            raise ValueError("قیمت آنلاین بدون نام منبع ذخیره نمی‌شود.")
         kind = q.kind or ""
         if q.source_time is not None:
-            exists = db.scalar(select(m.Price.id).where(m.Price.asset_id == asset.id, m.Price.provider_id == pv.id,
-                                                        m.Price.source_time == q.source_time, m.Price.price_kind == kind))
-            if exists:
+            exists = db.scalar(select(m.Price).where(m.Price.asset_id == asset.id, m.Price.provider_id == pv.id,
+                                                     m.Price.source_time == q.source_time, m.Price.price_kind == kind))
+            if exists is not None:
+                if valid and not exists.is_valid:
+                    # منبع همان زمان را اصلاح کرده: رکورد نامعتبر قبلی با مقدار معتبر جدید جایگزین می‌شود (ردپا حفظ می‌شود)
+                    exists.price, exists.is_valid, exists.validity_note, exists.fetched_at = price, True, note, now
+                    exists.is_approved = bool(pv.auto_approve)
+                    exists.note = "دریافت خودکار"
+                    exists.raw_price = assessed.raw_price if assessed else q.price
+                    exists.raw_unit = assessed.raw_unit if assessed else norm_unit(q.unit)
+                    exists.conversion_note = assessed.conversion_note if assessed else ""
+                    exists.quality_flags = assessed.flags_json if assessed else "[]"
+                    db.flush()
+                    return "stored", exists
                 return "duplicate", None
         else:
             prev = db.scalar(select(m.Price).where(m.Price.asset_id == asset.id, m.Price.provider_id == pv.id,
@@ -149,7 +146,10 @@ class MarketDataEngine:
         row = m.Price(asset_id=asset.id, price=price, currency=asset.price_currency, recorded_at=q.source_time or now,
                       source=pv.name, is_approved=bool(pv.auto_approve and valid), note="دریافت خودکار" + ("" if valid else " — نامعتبر"),
                       provider_id=pv.id, fetched_at=now, source_time=q.source_time, price_kind=kind, is_valid=valid,
-                      validity_note=note)
+                      validity_note=note, origin="online",
+                      raw_price=assessed.raw_price if assessed else q.price, raw_unit=assessed.raw_unit if assessed else norm_unit(q.unit),
+                      conversion_note=assessed.conversion_note if assessed else "",
+                      quality_flags=assessed.flags_json if assessed else "[]")
         try:
             with db.begin_nested():
                 db.add(row)
@@ -159,27 +159,29 @@ class MarketDataEngine:
         return "stored", row
 
     # ------------------------------------------------------------ منبع به منبع
-    def _validate(self, q: Quote, asset: m.Asset, max_age_days: int, now: datetime) -> tuple[Decimal, bool, str]:
-        """(قیمت به واحد دارایی، معتبر؟، توضیح)."""
-        if q.price is None or not q.price.is_finite() or q.price <= 0:
-            return Decimal(0), False, "قیمت دریافتی صفر، منفی یا نامعتبر است."
-        price = convert_unit(q.price, q.unit, asset.price_currency)  # ProviderError(currency_mismatch)
-        if q.source_time is not None:
-            if q.source_time > now + FUTURE_TOLERANCE:
-                return price, False, "زمان قیمت در آینده است."
-            age = (now.date() - q.source_time.date()).days
-            if age > max_age_days:
-                return price, False, f"قیمت قدیمی است ({age} روز پیش؛ حداکثر مجاز {max_age_days} روز)."
-        return price, True, ""
+    def _validate(self, q: Quote, asset: m.Asset, max_age_days: int, now: datetime, market: str = "none",
+                  prev_price: Decimal | None = None) -> Assessment:
+        """اعتبارسنجی با لایهٔ کیفیت؛ ناسازگاری واحد → ProviderError(currency_mismatch)."""
+        return assess_quote(raw_price=q.price, unit=q.unit, source_time=q.source_time, now=now, asset_currency=asset.price_currency,
+                            max_age_days=max_age_days, market=market, prev_price=prev_price)
+
+    @staticmethod
+    def _prev_valid_price(db: Session, asset: m.Asset, pv: m.PriceProvider, now: datetime) -> Decimal | None:
+        """آخرین قیمت معتبر همان منبع در ۷۲ ساعت اخیر (برای تشخیص تغییر شدید)."""
+        p = db.scalar(select(m.Price).where(m.Price.asset_id == asset.id, m.Price.provider_id == pv.id, m.Price.is_valid.is_(True),
+                                            m.Price.recorded_at >= now - timedelta(hours=72)).order_by(m.Price.recorded_at.desc(), m.Price.id.desc()).limit(1))
+        return p.price if p else None
 
     def _latest_manual(self, db: Session, asset: m.Asset, max_age_days: int, now: datetime) -> m.Price | None:
-        p = db.scalar(select(m.Price).where(m.Price.asset_id == asset.id, m.Price.provider_id.is_(None), m.Price.is_approved.is_(True),
+        p = db.scalar(select(m.Price).where(m.Price.asset_id == asset.id, m.Price.origin == "manual", m.Price.is_approved.is_(True),
                                             m.Price.is_valid.is_(True)).order_by(m.Price.recorded_at.desc(), m.Price.id.desc()).limit(1))
         if p is None or (now.date() - p.recorded_at.date()).days > max_age_days:
             return None
         return p
 
-    def refresh_asset(self, db: Session, asset: m.Asset, force: bool = False, now: datetime | None = None) -> dict:
+    def refresh_asset(self, db: Session, asset: m.Asset, force: bool = False, now: datetime | None = None,
+                      all_sources: bool = False) -> dict:
+        """all_sources=True: پس از اولین موفقیت هم از بقیهٔ منابع می‌گیرد (فقط برای مقایسه؛ نتیجهٔ اصلی همان اولین منبع موفق است)."""
         now = now or now_local()
         max_age = db.get(m.AppSettings, 1).max_price_age_days if db.get(m.AppSettings, 1) else 3
         srcs = [s for s in db.scalars(select(m.AssetPriceSource).where(m.AssetPriceSource.asset_id == asset.id)) if s.is_enabled]
@@ -199,32 +201,39 @@ class MarketDataEngine:
                 att.update(status="disabled", message="منبع غیرفعال است.")
                 continue
             if pv.kind == "manual":
+                if res["ok"]:
+                    att.update(status="skipped", message="قبلاً از منبع بالاتر قیمت معتبر گرفته شد.")
+                    continue
                 p = self._latest_manual(db, asset, max_age, now)
                 if p is not None:
                     att.update(ok=True, status="manual", message="آخرین قیمت دستی تأییدشده استفاده می‌شود.")
                     res.update(ok=True, status="manual", price=p.price, provider=pv.name, provider_id=pv.id,
                                source_time=p.recorded_at, message=f"از آخرین قیمت دستی ({p.recorded_at:%Y-%m-%d %H:%M}) استفاده شد.")
                     db.commit()
-                    return res
+                    if not all_sources:
+                        return res
+                    continue
                 att.update(status="no_manual", message="قیمت دستی تازه‌ای ثبت نشده است.")
                 continue
             t0 = self._mono()
             try:
                 q, cached, ms = self.fetch_quote(pv, src.external_id, src.price_field, use_cache=True)
-                price, valid, note = self._validate(q, asset, max_age, now)
+                asm = self._validate(q, asset, max_age, now, pv.market, self._prev_valid_price(db, asset, pv, now))
+                price, valid, note = asm.price, asm.valid, asm.note
             except ProviderError as e:
                 ms = int((self._mono() - t0) * 1000)
                 att.update(status=e.code, message=e.message)
                 self._log(db, pv, asset, False, "error" if e.code != "currency_mismatch" else "invalid",
-                          f"[{e.code}] {e.message}", ms, None, now)
+                          f"[{e.code}] {e.message}", ms, None, now, code=e.code)
                 self._touch(pv, src, False, e.message, ms, now)
                 log.warning("price fetch failed asset=%s provider=%s: %s", asset.id, pv.name, e.message)
                 db.commit()
                 continue
-            status, row = self._store(db, asset, pv, q, price, valid, note, now)
+            status, row = self._store(db, asset, pv, q, price, valid, note, now, asm)
             if not valid:
-                att.update(status="stale" if "قدیمی" in note else "invalid", message=note)
-                self._log(db, pv, asset, False, att["status"], note, ms, price, now)
+                code = "stale" if "stale" in asm.flags else ("future_time" if "future_time" in asm.flags else "non_positive" if "non_positive" in asm.flags else "invalid")
+                att.update(status="stale" if "stale" in asm.flags else "invalid", message=note)
+                self._log(db, pv, asset, False, att["status"], note, ms, price, now, code=code)
                 self._touch(pv, src, False, note, ms, now)
                 db.commit()
                 continue
@@ -232,12 +241,21 @@ class MarketDataEngine:
             if status == "stored" and not pv.auto_approve:
                 msg += " در انتظار تأیید است و تا تأیید در ارزش‌گذاری استفاده نمی‌شود."
             att.update(ok=True, status="ok" if status == "stored" else "duplicate", message=msg)
+            if row is not None:
+                # ثبت کامل مسیر: کدام منابع قبل از این منبع شکست خوردند و نهایتاً قیمت از کجا آمد
+                row.via = json.dumps([{"provider": x["provider"], "status": x["status"], "message": x["message"][:200]} for x in res["attempts"]], ensure_ascii=False)
+                if asm.note:
+                    msg += " " + asm.note
             self._log(db, pv, asset, True, "ok" if status == "stored" else "duplicate", msg + (" (از کش)" if cached else ""), ms, price, now)
             self._touch(pv, src, True, "", ms, now)
-            res.update(ok=True, status="ok" if status == "stored" else "duplicate", price=price, provider=pv.name, provider_id=pv.id,
-                       source_time=q.source_time or now, message=msg, approved=bool(row.is_approved) if row else None,
-                       cached=cached, extra=q.extra)
+            if not res["ok"]:
+                res.update(ok=True, status="ok" if status == "stored" else "duplicate", price=price, provider=pv.name, provider_id=pv.id,
+                           source_time=q.source_time or now, message=msg, approved=bool(row.is_approved) if row else None,
+                           cached=cached, extra=q.extra)
             db.commit()
+            if not all_sources:
+                return res
+        if res["ok"]:
             return res
         # همهٔ منابع ناموفق
         latest = db.scalar(select(m.Price).where(m.Price.asset_id == asset.id, m.Price.is_approved.is_(True), m.Price.is_valid.is_(True))
@@ -292,7 +310,9 @@ class MarketDataEngine:
                 note = "" if valid else "قیمت تاریخی نامعتبر است."
             except ProviderError as e:
                 valid, note = False, e.message
-            st, _ = self._store(db, asset, pv, q, price, valid, note, now)
+            asm = Assessment(valid, price, note, [] if valid else ["non_positive"], conversion_trace(q.price, q.unit, asset.price_currency, price) if price > 0 else "",
+                             q.price, norm_unit(q.unit))
+            st, _ = self._store(db, asset, pv, q, price, valid, note, now, asm)
             if not valid:
                 bad += 1
             elif st == "stored":

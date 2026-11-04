@@ -50,6 +50,13 @@ class Settings(BaseSettings):
     servix_base_url: str = ""
     servix_api_key: str = Field(default="", repr=False)
     # ساعات بازار بورس تهران (شنبه تا چهارشنبه)، به وقت APP_TIMEZONE
+    # --- موتور کنترل کیفیت قیمت (نسخهٔ ۲٫۱) ---
+    quality_conflict_pct: float = 10.0  # اختلاف بیش از این درصد بین دو منبع تازه = «اختلاف غیرعادی»؛ قیمت تا تصمیم کاربر وارد ارزش‌گذاری نمی‌شود
+    quality_jump_pct: float = 20.0  # تغییر بیش از این درصد نسبت به قیمت قبلی همان منبع = هشدار «تغییر شدید»
+    quality_max_lag_minutes: int = 180  # فاصلهٔ زمان منبع با زمان دریافت (فقط بازارهای ۲۴ساعته/در ساعات باز بورس)
+    quality_provider_down_failures: int = 3  # تعداد خطای پیاپی برای «قطع ارتباط»
+    quality_compare_window_hours: int = 24  # پنجرهٔ مقایسهٔ قیمت منابع
+
     tse_open_time: str = "08:45"
     tse_close_time: str = "12:45"
 

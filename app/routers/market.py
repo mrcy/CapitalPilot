@@ -4,7 +4,7 @@
 """
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field
@@ -16,7 +16,7 @@ from ..database import get_db
 from ..errors import NotFoundError, ValidationFailure
 from ..schemas import ConfirmIn, ProviderIn, SchedulerSettingsIn
 from ..services import clock
-from ..services.marketdata import service
+from ..services.marketdata import intelligence, service
 from ..services.marketdata.base import ProviderError
 from ..services.marketdata.engine import get_engine
 from ..services.marketdata.scheduler import get_scheduler
@@ -234,3 +234,44 @@ def price_history(asset_id: int, days: int = Query(90, ge=1, le=3650), valid_onl
     for c in comparison:
         c["diff_pct"] = ((c["last_price"] - base) / base * 100) if (c["last_price"] and base) else None
     return {"asset_id": a.id, "currency": a.price_currency, "series": list(series.values()), "comparison": comparison}
+
+
+# ---------------- مرکز هوشمندی قیمت‌ها (فقط‌خواندنی؛ هیچ سفارشی ثبت نمی‌شود) ----------------
+@router.get("/intelligence/overview")
+def intel_overview(days: int = Query(7, ge=1, le=180), date_from: date | None = None, date_to: date | None = None,
+                   db: Session = Depends(get_db)):
+    return intelligence.overview(db, days, date_from, date_to)
+
+
+@router.get("/intelligence/assets")
+def intel_assets(q: str = "", status: str = "", provider_id: int | None = None, asset_id: int | None = None,
+                 include_inactive: bool = False, db: Session = Depends(get_db)):
+    if status and status not in intelligence.STATUS_TEXT:
+        raise ValidationFailure("وضعیت نامعتبر است.")
+    return {"items": intelligence.asset_rows(db, q=q, status=status, provider_id=provider_id, asset_id=asset_id,
+                                             include_inactive=include_inactive),
+            "status_labels": intelligence.STATUS_TEXT, "thresholds": intelligence.thresholds()}
+
+
+@router.get("/intelligence/alerts")
+def intel_alerts(severity: str = "", type: str = "", db: Session = Depends(get_db)):
+    allr = intelligence.alerts(db)
+    items = [a for a in allr if (not severity or a["severity"] == severity) and (not type or a["type"] == type)]
+    counts = {"critical": 0, "warning": 0, "info": 0}
+    for a in allr:
+        counts[a["severity"]] += 1
+    return {"items": items, "counts": counts, "total": len(allr), "type_labels": intelligence.ALERT_TYPES}
+
+
+@router.get("/intelligence/performance")
+def intel_performance(days: int = Query(14, ge=1, le=180), provider_id: int | None = None, asset_id: int | None = None,
+                      date_from: date | None = None, date_to: date | None = None, db: Session = Depends(get_db)):
+    return intelligence.performance(db, days, provider_id, asset_id, date_from, date_to)
+
+
+@router.get("/intelligence/logs")
+def intel_logs(date_from: date | None = None, date_to: date | None = None, provider_id: int | None = None,
+               asset_id: int | None = None, status: str = "", only_errors: bool = False,
+               page: int = Query(1, ge=1), page_size: int = Query(25, ge=5, le=200), db: Session = Depends(get_db)):
+    return intelligence.search_logs(db, date_from=date_from, date_to=date_to, provider_id=provider_id, asset_id=asset_id,
+                                    status=status, only_errors=only_errors, page=page, page_size=page_size)

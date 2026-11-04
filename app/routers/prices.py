@@ -8,20 +8,31 @@ from sqlalchemy.orm import Session, joinedload
 
 from .. import models as m
 from ..database import get_db
-from ..errors import NotFoundError
+from ..errors import NotFoundError, ValidationFailure
 from ..schemas import FxIn, PriceIn
 from ..services import clock, prices as svc
 from ..services.finance.valuation import make_book
+from ..services.marketdata import quality
 from ..services.repository import load_dataset
 
 router = APIRouter(prefix="/api", tags=["prices"])
+
+
+def _json(t):
+    import json
+    try:
+        return json.loads(t or "[]")
+    except ValueError:
+        return []
 
 
 def price_dict(p: m.Price) -> dict:
     return {"id": p.id, "asset_id": p.asset_id, "asset": p.asset.name if p.asset else None, "price": p.price,
             "currency": p.currency, "recorded_at": p.recorded_at, "source": p.source, "is_approved": p.is_approved,
             "is_valid": p.is_valid, "validity_note": p.validity_note, "provider_id": p.provider_id,
-            "fetched_at": p.fetched_at, "source_time": p.source_time, "price_kind": p.price_kind, "note": p.note}
+            "fetched_at": p.fetched_at, "source_time": p.source_time, "price_kind": p.price_kind, "note": p.note,
+            "origin": p.origin, "raw_price": p.raw_price, "raw_unit": p.raw_unit, "conversion_note": p.conversion_note,
+            "quality_flags": quality.flags_of(p), "via": _json(p.via), "user_confirmed": p.user_confirmed}
 
 
 def fx_dict(r: m.FxRate) -> dict:
@@ -77,7 +88,10 @@ def approve_price(price_id: int, approved: bool = True, db: Session = Depends(ge
     p = db.get(m.Price, price_id)
     if p is None:
         raise NotFoundError("قیمت یافت نشد.")
+    if approved and not p.is_valid:
+        raise ValidationFailure("قیمت نامعتبر قابل تأیید نیست (" + (p.validity_note or "نامعتبر") + ").")
     p.is_approved = approved
+    p.user_confirmed = bool(approved)  # تأیید صریح کاربر؛ در اختلاف منابع تصمیم کاربر ارجح است
     db.commit()
     return price_dict(p)
 
