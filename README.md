@@ -26,12 +26,35 @@ copy .env.example .env
 
 **Docker**
 ```bash
-docker compose up --build        # دادهٔ برنامه در پوشهٔ ./data ذخیره می‌شود
+docker compose up -d --build     # دادهٔ برنامه در volume به نام capitalpilot-data (داخل کانتینر /data) ذخیره می‌شود؛ جزئیات: docs/DOCKER.md
 ```
 
 مستندات Swagger: `http://127.0.0.1:8000/api/docs` — بررسی سلامت: `/api/health`
 
 برای دسترسی از شبکه: `HOST=0.0.0.0 ./run.sh` (در این حالت حتماً `BASIC_AUTH_USER` و `BASIC_AUTH_PASSWORD` را در `.env` تنظیم کنید).
+
+## استقرار Production روی سرور شخصی (نسخهٔ ۲٫۴٫۰)
+
+بستهٔ `CapitalPilot-v2.4.0-production.zip` بدون `.env`، دیتابیس، کلید یا دادهٔ مالی ساخته می‌شود و پس از استخراج روی **Ubuntu 24.04 / Python 3.12 / systemd / Nginx / Let's Encrypt** اجرا می‌شود (SQLite پیش‌فرض).
+
+```bash
+sudo apt update && sudo apt install -y python3 python3-venv unzip curl nginx
+sudo mkdir -p /opt && sudo unzip CapitalPilot-v2.4.0-production.zip -d /opt && sudo mv /opt/CapitalPilot-v2.4.0 /opt/capitalpilot
+cd /opt/capitalpilot && sudo ./install.sh --domain capital.example.com --basic-auth admin --nginx
+```
+
+| فایل | کاربرد |
+|---|---|
+| `install.sh` | نصب: پیش‌نیازها، venv، وابستگی‌ها (با `requirements.lock`)، `.env` (فقط اگر نباشد)، مجوزها، migration، سرویس systemd، تایمر پشتیبان شبانه، بررسی سلامت. هرگز `.env`/دیتابیس موجود را بدون اجازه بازنویسی نمی‌کند |
+| `update.sh` | به‌روزرسانی از ZIP جدید با پشتیبان دیتابیس/تنظیمات/کد، migration، بررسی سلامت و **بازگشت خودکار** در صورت خطا؛ `--rollback` برای بازگشت دستی |
+| `backup.sh` / `restore.sh` | پشتیبان کامل قابل‌انتقال (اختیاری رمزنگاری‌شده) و بازیابی امن با نسخهٔ ایمنی |
+| `python -m app.manage` | `version`، `check`، `migrate`، `backup`، `restore` |
+| `deploy/` | قالب‌های systemd و Nginx |
+| `VERSION`, `RELEASE_NOTES_fa.md` | نسخه و یادداشت‌های انتشار |
+
+راهنماها: [نصب روی Ubuntu 24.04](docs/INSTALL-UBUNTU-24.04.md) · [Nginx و HTTPS](docs/NGINX-HTTPS.md) · [پشتیبان‌گیری و بازیابی](docs/BACKUP-RESTORE.md) · [اتصال منابع قیمت پس از استقرار](docs/PRICE-SOURCES.md) · [Docker](docs/DOCKER.md) · [امنیت](docs/SECURITY.md) · [مستندات API](docs/API.md)
+
+مسیرهای پایدار پس از نصب: برنامه `/opt/capitalpilot`، تنظیمات `/opt/capitalpilot/.env` (مجوز 600)، دیتابیس `/var/lib/capitalpilot/capitalpilot.db`، پشتیبان‌ها `/var/lib/capitalpilot/backups` (مجوز 700، بیرون از مسیر وب)، لاگ `/var/log/capitalpilot`.
 
 ## پیش‌فرض‌ها (همه در «تنظیمات» قابل ویرایش)
 
@@ -265,7 +288,12 @@ app/
   services/finance/   محاسبات خالص (ledger, valuation, performance, rebalance, plan, risk)
   services/marketdata/ موتور داده‌های بازار (providers/, engine, quality, iranmarket, scheduler, calendar, jsonpath, crypto, http)
   services/           مخزن داده، دارایی‌ها، سبدها، حذف امن، گزارش‌ها، خروجی‌ها، پشتیبان‌گیری، قیمت‌ها
+  manage.py           ابزار خط فرمان استقرار (version/check/migrate/backup/restore)
   static/             فرانت‌اند (HTML/CSS/JS ماژولار، Chart.js و فونت وزیرمتن به‌صورت محلی)
+deploy/               قالب‌های systemd و Nginx و توابع مشترک اسکریپت‌ها
+docs/                 راهنماهای نصب/Nginx/پشتیبان/منابع قیمت/Docker/امنیت + API.md و openapi.json
+tools/                gen_api_docs.py (تولید مستندات API)، build_release.sh (ساخت ZIP انتشار)
+install.sh update.sh backup.sh restore.sh   اسکریپت‌های استقرار
 tests/                آزمون‌های واحد محاسبات مالی و آزمون‌های API
 data/                 پایگاه‌داده، پشتیبان‌ها و لاگ‌ها (خارج از Git)
 ```
@@ -288,8 +316,8 @@ python -m pytest -q                      # همهٔ آزمون‌های Python (
 
 ## امنیت
 
-اعتبارسنجی همهٔ ورودی‌ها با Pydantic، کوئری‌های پارامتری SQLAlchemy (بدون SQL خام)، لاگ خطاها در `data/logs`، سربرگ‌های امنیتی،
-عدم وجود هیچ کلید API در جاوااسکریپت (کلیدها رمزنگاری‌شده و فقط‌نوشتنی‌اند)، مسدودسازی SSRF (آدرس‌های داخلی/localhost مگر با `PRICE_ALLOW_PRIVATE_HOSTS=true`)، فهرست میزبان مجاز اختیاری و Basic Auth اختیاری.
+اعتبارسنجی همهٔ ورودی‌ها با Pydantic، کوئری‌های پارامتری SQLAlchemy (بدون SQL خام)، لاگ خطاها در `data/logs`، سربرگ‌های امنیتی (و HSTS روی HTTPS در production)،
+عدم وجود هیچ کلید API در جاوااسکریپت (کلیدها رمزنگاری‌شده و فقط‌نوشتنی‌اند)، مسدودسازی SSRF (آدرس‌های داخلی/localhost مگر با `PRICE_ALLOW_PRIVATE_HOSTS=true`)، فهرست میزبان مجاز (`ALLOWED_HOSTS`)، CORS بسته به‌طور پیش‌فرض (`CORS_ORIGINS`)، مستندات Swagger قابل خاموش‌کردن (`DOCS_ENABLED`) و Basic Auth اختیاری. پیام خطاهای ۵۰۰ عمومی است و جزئیات فقط در لاگ سرور می‌ماند. فایل دیتابیس و پشتیبان‌ها مجوز 600/700 می‌گیرند. جزئیات و فهرست بازبینی: `docs/SECURITY.md`.
 
 همهٔ متغیرهای محیطی در `.env.example` توضیح داده شده‌اند.
 

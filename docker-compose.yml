@@ -1,11 +1,25 @@
+# اجرا:  cp .env.example .env   (ویرایش: ALLOWED_HOSTS، BASIC_AUTH_*، SECRET_KEY)   سپس:  docker compose up -d --build
+# پورت فقط روی 127.0.0.1 میزبان باز می‌شود؛ دسترسی بیرونی با Nginx + HTTPS (docs/NGINX-HTTPS.md).
+# توجه: مسیرهای DATA_DIR/BACKUP_DIR/LOG_DIR/DATABASE_URL را در .env برای Docker تنظیم نکنید (داخل تصویر روی /data ثابت‌اند).
 services:
   capitalpilot:
     build: .
+    image: capitalpilot:2.4.0
+    container_name: capitalpilot
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     env_file:
       - path: .env
         required: false
+    environment:
+      APP_ENV: production
     volumes:
-      - ./data:/srv/capitalpilot/data
+      - capitalpilot-data:/data
     restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  capitalpilot-data:

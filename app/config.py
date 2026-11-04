@@ -1,6 +1,7 @@
 """تنظیمات برنامه (از فایل .env یا متغیرهای محیطی)."""
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -8,10 +9,12 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+# مسیر فایل .env قابل تعیین است (در سرور: همان .env کنار برنامه)؛ فایل .env هرگز داخل بستهٔ نرم‌افزاری نیست.
+ENV_FILE = Path(os.environ.get("CAPITALPILOT_ENV_FILE") or BASE_DIR / ".env")
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=BASE_DIR / ".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(env_file=ENV_FILE, env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "CapitalPilot"
     app_tagline: str = "کنترل سرمایه، تصمیم هوشمندانه"
@@ -24,6 +27,12 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     docs_enabled: bool = True
     seed_on_startup: bool = True
+    # production | development. در production هشدارهای امنیتی راه‌اندازی فعال و HSTS (فقط روی HTTPS) ارسال می‌شود.
+    app_env: str = "development"
+    # میزبان‌های مجاز (Trusted Hosts)، جداشده با ویرگول؛ خالی = بدون محدودیت. localhost و 127.0.0.1 برای بررسی سلامت همیشه مجازند.
+    allowed_hosts: str = ""
+    # مبداهای مجاز CORS (جداشده با ویرگول). پیش‌فرض خالی = فقط همان مبدأ (فرانت‌اند با همین سرور سرو می‌شود و CORS لازم نیست).
+    cors_origins: str = ""
 
     # دسترسی (اختیاری): اگر هر دو مقدار تنظیم شوند، Basic Auth فعال می‌شود.
     basic_auth_user: str = ""
@@ -65,6 +74,19 @@ class Settings(BaseSettings):
 
     tse_open_time: str = "08:45"
     tse_close_time: str = "12:45"
+
+    @property
+    def is_production(self) -> bool:
+        return self.app_env.strip().lower() in ("production", "prod")
+
+    @property
+    def allowed_host_list(self) -> list[str]:
+        hosts = [h.strip() for h in self.allowed_hosts.split(",") if h.strip()]
+        return [*hosts, "localhost", "127.0.0.1", "[::1]"] if hosts else []
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip().rstrip("/") for o in self.cors_origins.split(",") if o.strip() and o.strip() != "*"]
 
     @property
     def allowed_price_hosts(self) -> set[str]:

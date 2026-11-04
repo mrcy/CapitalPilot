@@ -1,0 +1,42 @@
+# /etc/systemd/system/capitalpilot.service — ساخته‌شده توسط install.sh (قابل ویرایش؛ install.sh آن را بدون اجازه بازنویسی نمی‌کند)
+[Unit]
+Description=CapitalPilot — کنترل سرمایه (FastAPI/Uvicorn)
+Documentation=file:@APP_DIR@/README.md
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=@APP_DIR@/app/main.py
+
+[Service]
+Type=simple
+User=@USER@
+Group=@USER@
+WorkingDirectory=@APP_DIR@
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=CAPITALPILOT_ENV_FILE=@ENV_FILE@
+# مهم: فقط یک worker. زمان‌بند دریافت قیمت داخل همین فرایند اجرا می‌شود؛ چند worker یعنی دریافت تکراری.
+# فقط روی 127.0.0.1 گوش می‌دهد؛ دسترسی بیرونی از طریق Nginx (HTTPS).
+ExecStart=@APP_DIR@/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port @PORT@ --workers 1 --proxy-headers --forwarded-allow-ips=127.0.0.1 --no-server-header --no-access-log
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+
+# سخت‌سازی
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+ReadWritePaths=@DATA_DIR@ @BACKUP_DIR@ @LOG_DIR@
+
+[Install]
+WantedBy=multi-user.target

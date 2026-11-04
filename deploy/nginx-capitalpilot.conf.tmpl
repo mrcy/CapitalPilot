@@ -1,0 +1,76 @@
+# /etc/nginx/sites-available/capitalpilot — نمونهٔ Reverse Proxy برای CapitalPilot
+# جایگزین‌ها: @DOMAIN@ (دامنه) و @PORT@ (پورت داخلی برنامه). گواهی HTTPS را certbot اضافه/تنظیم می‌کند:
+#   sudo certbot --nginx -d @DOMAIN@
+# (تا پیش از گرفتن گواهی، فقط بخش HTTP فعال است؛ certbot ریدایرکت به HTTPS را خودش می‌افزاید.)
+
+# محدودیت نرخ درخواست برای API (جلوگیری از حدس رمز و فشار ناخواسته)
+limit_req_zone $binary_remote_addr zone=capitalpilot_api:10m rate=20r/s;
+
+upstream capitalpilot_app {
+    server 127.0.0.1:@PORT@;
+    keepalive 8;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name @DOMAIN@;
+
+    # بدون افشای نسخهٔ Nginx
+    server_tokens off;
+
+    # حجم بیشتر برای بازیابی فایل پشتیبان JSON از طریق صفحهٔ «تنظیمات»
+    client_max_body_size 50m;
+
+    # هدرهای امنیتی (برنامه هم بخشی از آن‌ها را می‌فرستد)
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "same-origin" always;
+    # HSTS را پس از اطمینان از کار کردن HTTPS (پس از certbot) فعال کنید:
+    # add_header Strict-Transport-Security "max-age=31536000" always;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+
+    # فایل‌های ایستا (فونت/Chart.js) با کش
+    location /static/vendor/ {
+        proxy_pass http://capitalpilot_app;
+        include /etc/nginx/proxy_params;
+        proxy_set_header Connection "";
+        proxy_http_version 1.1;
+        expires 7d;
+    }
+
+    # Swagger/OpenAPI: به‌طور پیش‌فرض بسته (در برنامه هم DOCS_ENABLED=false است).
+    # برای دسترسی از IP مدیر، allow/deny زیر را ویرایش و DOCS_ENABLED=true کنید.
+    location ~ ^/api/(docs|redoc|openapi\.json) {
+        allow 127.0.0.1;
+        # allow 203.0.113.10;   # IP مدیر
+        deny all;
+        proxy_pass http://capitalpilot_app;
+        include /etc/nginx/proxy_params;
+        proxy_set_header Connection "";
+        proxy_http_version 1.1;
+    }
+
+    location /api/ {
+        limit_req zone=capitalpilot_api burst=60 nodelay;
+        proxy_pass http://capitalpilot_app;
+        include /etc/nginx/proxy_params;
+        proxy_set_header Connection "";
+        proxy_http_version 1.1;
+        proxy_read_timeout 120s;      # دریافت دستی قیمت‌ها/گزارش PDF ممکن است طول بکشد
+        proxy_send_timeout 120s;
+    }
+
+    location / {
+        proxy_pass http://capitalpilot_app;
+        include /etc/nginx/proxy_params;
+        proxy_set_header Connection "";
+        proxy_http_version 1.1;
+    }
+
+    # دسترسی ممنوع به فایل‌های مخفی (در حالت عادی اصلاً از این مسیرها سرو نمی‌شود)
+    location ~ /\.(?!well-known) { deny all; }
+}

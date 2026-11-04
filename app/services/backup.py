@@ -22,6 +22,8 @@ from .finance.ledger import LedgerError, replay
 from .repository import sync_plan, tx_rec
 from .seed import seed_defaults
 
+from .fsperm import secure_dir, secure_file
+
 log = logging.getLogger("capitalpilot.backup")
 SCHEMA_VERSION = 2
 SUPPORTED_VERSIONS = (1, 2)
@@ -126,6 +128,7 @@ def save_db_backup(db: Session | None, label: str = "manual") -> dict:
     """نسخه پشتیبان فایل دیتابیس (SQLite با API امن backup) و نسخه JSON کنار آن."""
     s = get_settings()
     s.backup_dir.mkdir(parents=True, exist_ok=True)
+    secure_dir(s.backup_dir)
     stamp = now_local().strftime("%Y%m%d-%H%M%S")
     files = []
     path = s.sqlite_path
@@ -138,10 +141,12 @@ def save_db_backup(db: Session | None, label: str = "manual") -> dict:
         finally:
             dst.close()
             src.close()
+        secure_file(dest)
         files.append(dest.name)
     elif db is not None:
         dest = s.backup_dir / f"capitalpilot-{label}-{stamp}.json"
         dest.write_text(json.dumps(export_json(db), ensure_ascii=False), encoding="utf-8")
+        secure_file(dest)
         files.append(dest.name)
     _prune(s.backup_dir)
     return {"files": files, "dir": str(s.backup_dir)}

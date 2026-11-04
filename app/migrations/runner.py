@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from .. import models as m
 from ..config import get_settings
 from ..database import Base
+from ..services.fsperm import secure_dir, secure_file
 from . import steps
 
 log = logging.getLogger("capitalpilot.migrations")
@@ -77,6 +78,7 @@ def _backup_sqlite(engine: Engine, label: str) -> str | None:
     if engine.dialect.name != "sqlite" or not path or not path.exists():
         return None
     s.backup_dir.mkdir(parents=True, exist_ok=True)
+    secure_dir(s.backup_dir)
     dest = s.backup_dir / f"capitalpilot-{label}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.db"
     src = sqlite3.connect(str(path))
     dst = sqlite3.connect(str(dest))
@@ -85,6 +87,7 @@ def _backup_sqlite(engine: Engine, label: str) -> str | None:
     finally:
         dst.close()
         src.close()
+    secure_file(dest)
     return dest.name
 
 

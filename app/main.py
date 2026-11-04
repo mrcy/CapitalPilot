@@ -8,6 +8,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -18,6 +20,7 @@ from .errors import register_error_handlers
 from .migrations import run_migrations
 from .logging_conf import setup_logging
 from .routers import analytics, assets, catalog, core, data, iranmarket, market, portfolios, prices, reports, search, transactions
+from .services.fsperm import harden_runtime_paths
 from .services.seed import is_seeded, seed_defaults
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -37,6 +40,20 @@ class RevalidatingStaticFiles(StaticFiles):
 log = logging.getLogger("capitalpilot")
 
 
+def production_warnings(s) -> list[str]:
+    """نکات امنیتی که در محیط production باید رعایت شوند (فقط هشدار؛ برنامه را متوقف نمی‌کند)."""
+    if not s.is_production:
+        return []
+    out = []
+    if not (s.basic_auth_user and s.basic_auth_password):
+        out.append("BASIC_AUTH_USER/BASIC_AUTH_PASSWORD تنظیم نشده است؛ مطمئن شوید دسترسی با Nginx (Basic Auth/VPN) محدود شده است.")
+    if s.docs_enabled:
+        out.append("DOCS_ENABLED=true است؛ Swagger (/api/docs) در production را خاموش یا محدود کنید.")
+    if not s.allowed_hosts:
+        out.append("ALLOWED_HOSTS خالی است؛ برای جلوگیری از Host header attack دامنهٔ خود را تنظیم کنید.")
+    return out
+
+
 def init_db() -> None:
     info = run_migrations(engine)
     if info["applied"] and not info["fresh"]:
@@ -47,13 +64,16 @@ def init_db() -> None:
             if not is_seeded(db):
                 seed_defaults(db)
                 log.info("Initial data seeded")
+    harden_runtime_paths(s)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
     init_db()
-    log.info("CapitalPilot %s started", __version__)
+    log.info("CapitalPilot %s started (env=%s)", __version__, get_settings().app_env)
+    for w in production_warnings(get_settings()):
+        log.warning("هشدار امنیتی: %s", w)
     scheduler = None
     if get_settings().scheduler_enabled:
         from .services.marketdata.scheduler import get_scheduler
@@ -90,12 +110,21 @@ def create_app() -> FastAPI:
                 return Response("Unauthorized", status_code=401, headers={"WWW-Authenticate": 'Basic realm="CapitalPilot"'})
             return await call_next(request)
 
+    if s.allowed_host_list:
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=s.allowed_host_list)
+    if s.cors_origin_list:
+        app.add_middleware(CORSMiddleware, allow_origins=s.cors_origin_list, allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+                           allow_headers=["Content-Type", "Authorization"], allow_credentials=False, max_age=600)
+
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
         resp = await call_next(request)
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
         resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
         resp.headers.setdefault("Referrer-Policy", "same-origin")
+        resp.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+        if s.is_production and request.url.scheme == "https":
+            resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
         if request.url.path.startswith("/api/"):
             resp.headers["Cache-Control"] = "no-store"
         return resp
