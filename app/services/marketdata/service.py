@@ -140,6 +140,15 @@ def _validate_url(url: str, auth_type: str) -> None:
         raise ValidationFailure("برای ارسال کلید API فقط آدرس https مجاز است.")
 
 
+def _require_configured(kind: str, base_url: str, field_map: dict) -> None:
+    if kind in ("custom_api", "streamdata", "servix"):
+        s = get_settings()
+        if not (base_url or getattr(s, f"{kind}_base_url", "")):
+            raise ValidationFailure("برای فعال‌سازی، آدرس API را وارد کنید (در همین فرم یا متغیر محیطی).")
+        if not field_map.get("price"):
+            raise ValidationFailure("برای فعال‌سازی، مسیر JSON قیمت (field_map.price) را وارد کنید.")
+
+
 def save_provider(db: Session, p, pid: int | None = None) -> m.PriceProvider:
     pv = db.get(m.PriceProvider, pid) if pid else None
     if pid and pv is None:
@@ -157,13 +166,8 @@ def save_provider(db: Session, p, pid: int | None = None) -> m.PriceProvider:
                 validate_path(path)
             except ProviderError as e:
                 raise ValidationFailure(f"مسیر JSON «{key}» نامعتبر است: {e.message}")
-    if p.kind in ("custom_api", "streamdata", "servix") and p.is_enabled:
-        s = get_settings()
-        has_url = bool(p.base_url or getattr(s, f"{p.kind}_base_url", ""))
-        if not has_url:
-            raise ValidationFailure("برای فعال‌سازی، آدرس API را وارد کنید.")
-        if not p.field_map.get("price"):
-            raise ValidationFailure("برای فعال‌سازی، مسیر JSON قیمت (field_map.price) را وارد کنید.")
+    if p.is_enabled:
+        _require_configured(p.kind, p.base_url, p.field_map)
     if pv is None:
         pv = m.PriceProvider(kind=p.kind)
         db.add(pv)
@@ -185,6 +189,8 @@ def save_provider(db: Session, p, pid: int | None = None) -> m.PriceProvider:
 def set_enabled(db: Session, pv: m.PriceProvider, enabled: bool) -> m.PriceProvider:
     if enabled and pv.is_archived:
         raise ValidationFailure("منبع بایگانی‌شده را ابتدا بازیابی کنید.")
+    if enabled:
+        _require_configured(pv.kind, pv.base_url, _j(pv.field_map, {}))
     pv.is_enabled = enabled
     db.commit()
     return pv

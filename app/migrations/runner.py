@@ -4,6 +4,7 @@ import logging
 import shutil
 import sqlite3
 from datetime import datetime
+from pathlib import Path
 from decimal import Decimal
 
 from sqlalchemy import inspect, text
@@ -69,7 +70,8 @@ def sync_columns(engine: Engine) -> list[str]:
 
 def _backup_sqlite(engine: Engine, label: str) -> str | None:
     s = get_settings()
-    path = s.sqlite_path
+    db_name = engine.url.database
+    path = Path(db_name) if db_name and db_name != ":memory:" else None
     if engine.dialect.name != "sqlite" or not path or not path.exists():
         return None
     s.backup_dir.mkdir(parents=True, exist_ok=True)

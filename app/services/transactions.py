@@ -75,7 +75,7 @@ def normalize(db: Session, p: dict, existing: m.Transaction | None = None) -> di
             raise ValidationFailure("تعداد واحد باید بزرگ‌تر از صفر باشد.")
         if price is None or price <= 0:
             raise ValidationFailure("قیمت هر واحد باید بزرگ‌تر از صفر باشد.")
-        if asset.decimals >= 0 and _decimals_of(qty) > max(asset.decimals, 6 if asset.fractional_units else 0):
+        if asset.decimals >= 0 and _decimals_of(qty) > (asset.decimals or (6 if asset.fractional_units else 0)):
             raise ValidationFailure(f"تعداد اعشار مجاز برای «{asset.name}» حداکثر {asset.decimals} رقم است.")
         if ty == "buy" and asset.min_quantity and qty < asset.min_quantity and existing is None:
             raise ValidationFailure(f"حداقل تعداد خرید «{asset.name}» برابر {asset.min_quantity.normalize():f} است.")
