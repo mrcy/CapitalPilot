@@ -205,6 +205,8 @@ def asset_rows(db: Session, now: datetime | None = None, *, q: str = "", status:
         attempts = [x for x in chain if x.last_attempt_at]
         last_att = max(attempts, key=lambda x: x.last_attempt_at, default=None)
         cmp = quality.compare_sources(rows, now, max_age, include_manual=True)
+        for x in cmp["rows"]:
+            x["age_minutes"] = max(0, int((now - x["recorded_at"]).total_seconds() // 60))
         newest_invalid = max((p for p in rows if not p.is_valid), key=lambda p: (p.recorded_at, p.id), default=None)
         shown = good if st["status"] in ("valid", "stale", "manual", "conflict") else None
         delay = None

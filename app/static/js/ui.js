@@ -60,6 +60,7 @@ const ICONS = {
   restore: 'M4 12a8 8 0 112.3 5.7M4 18v-6h6',
   play: 'M7 5l12 7-12 7z',
   chevron: 'M9 6l6 6-6 6',
+  pulse: 'M3 12h4l3-8 4 16 3-8h4',
 };
 export function icon(name, size = 18) {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -222,6 +223,7 @@ export function buildForm(fields, values = {}, { onChange } = {}) {
     const evt = f.type === 'select' || f.type === 'checkbox' ? 'change' : 'input';
     control.addEventListener(evt, refresh);
     control.addEventListener('change', refresh);
+    if (f.type === 'decimal') control.addEventListener('blur', () => { if (control.value.trim()) control.value = groupDecimalText(control.value); });
   }
   const api = { form, refs, getValues, refresh, setOptions(name, options, keep = true) {
     const sel = refs[name]; const cur = sel.value;
@@ -265,7 +267,7 @@ export function formModal({ title, fields, values = {}, submitLabel = 'ذخیر�
 // ---------------- اجزای نمایشی ----------------
 export function badge(text, kind = 'muted') { return h('span', { class: `badge ${kind}` }, text); }
 
-export function table(columns, rows, { empty = 'داده‌ای برای نمایش وجود ندارد.', rowClass, foot } = {}) {
+export function table(columns, rows, { empty = 'داده‌ای برای نمایش وجود ندارد.', rowClass, foot, compact = false } = {}) {
   if (!rows.length) return h('div', { class: 'empty-note' }, empty);
   const thead = h('thead', null, h('tr', null, columns.map((c) => h('th', { class: c.class || '' }, c.label))));
   const tbody = h('tbody', null, rows.map((r, i) => h('tr', { class: rowClass ? rowClass(r) : '' }, columns.map((c) => {
@@ -273,7 +275,7 @@ export function table(columns, rows, { empty = 'داده‌ای برای نما�
     return h('td', { class: c.class || '', 'data-label': c.label }, v === null || v === undefined ? '—' : v);
   }))));
   const tfoot = foot ? h('tfoot', null, h('tr', null, foot.map((c) => h('td', { class: c.class || '', colspan: c.colspan }, c.content)))) : null;
-  return h('div', { class: 'table-wrap' }, h('table', { class: 'data stack' }, thead, tbody, tfoot));
+  return h('div', { class: 'table-wrap' }, h('table', { class: `data stack${compact ? ' compact' : ''}` }, thead, tbody, tfoot));
 }
 
 export function kpi({ label, value, sub, tone = '', progress, hint, valueClass = '' }) {
@@ -302,4 +304,38 @@ export function downloadBlob(blob, filename) {
   const a = h('a', { href: URL.createObjectURL(blob), download: filename });
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+// ---------------- ارقام فارسی ----------------
+// هر متن نمایشی با ارقام لاتین (مثلاً پیام‌های سرور) به ارقام فارسی تبدیل می‌شود؛
+// فقط محتوای عمداً چپ‌به‌راست (نشانی، کلید، کد) و فیلدهای ورودی دست‌نخورده می‌مانند.
+const KEEP = 'script,style,textarea,input,code,pre,.kbd,[dir=ltr],.ltr-text,.ltr-input,[data-keep-digits]';
+const LATIN = /[0-9]/;
+function fixDigits(node) {
+  if (node.nodeType === 3) {
+    if (LATIN.test(node.nodeValue) && !(node.parentElement && node.parentElement.closest(KEEP))) node.nodeValue = faDigits(node.nodeValue);
+    return;
+  }
+  if (node.nodeType !== 1 || node.closest(KEEP)) return;
+  const w = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+  const list = [];
+  for (let t = w.nextNode(); t; t = w.nextNode()) list.push(t);
+  list.forEach(fixDigits);
+}
+export function installDigitFix(root = document.body) {
+  fixDigits(root);
+  new MutationObserver((muts) => {
+    for (const m of muts) {
+      if (m.type === 'characterData') fixDigits(m.target);
+      else m.addedNodes.forEach(fixDigits);
+    }
+  }).observe(root, { childList: true, subtree: true, characterData: true });
+}
+// قالب‌بندی هزارگان برای فیلدهای مبلغ هنگام ترک فیلد (مقدار با parseDecimal همچنان درست خوانده می‌شود)
+export function groupDecimalText(v) {
+  const t = enDigits(v);
+  if (!/^-?\d+(\.\d+)?$/.test(t)) return v;
+  const [i, f] = t.replace('-', '').split('.');
+  const g = i.replace(/\B(?=(\d{3})+(?!\d))/g, '٬');
+  return faDigits(`${t.startsWith('-') ? '-' : ''}${g}${f ? '٫' + f : ''}`);
 }

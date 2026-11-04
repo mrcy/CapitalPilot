@@ -246,3 +246,29 @@ option { background: #0e1830; }
 .market-block .kpis { grid-template-columns: repeat(2, minmax(0,1fr)); } @media (min-width: 720px) { .market-block .kpis { grid-template-columns: repeat(3, minmax(0,1fr)); } } @media (min-width: 1280px) { .market-block .kpis { grid-template-columns: repeat(6, minmax(0,1fr)); } }
 .json-box { direction: ltr; text-align: left; white-space: pre-wrap; word-break: break-all; background: #070d1c; border: 1px solid var(--line); border-radius: 10px; padding: 10px; font-size: 12px; max-height: 220px; overflow: auto; }
 .steps { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; padding: 0; list-style: none; } .steps li { padding: 8px 12px; border-radius: 10px; background: #0c1630; border: 1px solid var(--line); font-size: 13px; }
+
+/* ===== نسخهٔ ۲٫۱: مرکز هوشمندی قیمت‌ها ===== */
+.small-text { font-size: 12px; }
+.ltr-text { direction: ltr; unicode-bidi: isolate; display: inline-block; }
+.toolbar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
+.alert-link { display: block; margin-bottom: 14px; color: inherit; }
+.filters-3 { grid-template-columns: repeat(2, minmax(0,1fr)); } @media (min-width: 900px) { .filters-3 { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+.tabs a.tab { text-decoration: none; display: inline-flex; align-items: center; }
+.chain { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.chain-item { font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); background: #ffffff08; color: var(--muted); white-space: nowrap; }
+.chain-item.primary { border-color: #6f86ff66; color: #c5d0ff; } .chain-item.used { border-color: #2fd29a77; color: var(--green); background: var(--green-bg); }
+.chain-item.down { border-color: #ff5d7366; color: var(--red); } .chain-arrow { color: var(--dim); margin-inline-end: 4px; }
+.trace { display: grid; gap: 6px; font-size: 13.5px; margin-bottom: 10px; }
+.intel-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.neg { color: var(--red); }
+@media (min-width: 720px) { .kpis.k6 { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+@media (min-width: 1280px) { .kpis.k6 { grid-template-columns: repeat(6, minmax(0,1fr)); } }
+.err-line { max-width: 220px; white-space: normal; }
+.kpi-small { font-size: 15px; display: inline-block; }
+/* جدول فشرده: در عرض‌های میانی (حدود ۱۲۰۰px) اسکرول افقی نداشته باشد */
+@media (min-width: 720px) {
+  table.data.compact { min-width: 0; table-layout: auto; }
+  table.data.compact th, table.data.compact td { padding: 9px 7px; font-size: 13px; }
+  table.data.compact th { white-space: normal; line-height: 1.5; }
+  table.data.compact td.num { white-space: nowrap; }
+}

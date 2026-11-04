@@ -48,12 +48,11 @@ export async function render(root) {
       { label: 'مبلغ ایده‌آل', class: 'num', render: (x) => money(x.ideal_amount, 0, false) },
       { label: 'قیمت روز', class: 'num', render: (x) => (x.price === null ? '—' : money(x.price, 2, false)) },
       { label: 'تعداد واحد', class: 'num', render: (x) => h('b', null, units(x.units)) },
-      { label: 'کارمزد', class: 'num', render: (x) => money(x.fee, 0, false) },
-      { label: 'مبلغ نهایی', class: 'num', render: (x) => h('b', null, money(x.total_cost, 0, false)) },
+      { label: 'مبلغ نهایی (کارمزد)', class: 'num', render: (x) => h('div', null, h('b', null, money(x.total_cost, 0, false)), h('div', { class: 'muted small-text' }, `کارمزد: ${money(x.fee, 0, false)}`)) },
       { label: 'وزن پس از خرید', class: 'num', render: (x) => pct(x.weight_after, 1) },
       { label: 'وضعیت', render: (x) => badge(STATUS[x.status][1], STATUS[x.status][0]) },
       { label: '', render: (x) => (Number(x.units) > 0 ? h('button', { class: 'btn tiny', title: 'پس از انجام خرید در پلتفرم، آن را ثبت کنید', onclick: () => openTxForm({ defaults: { tx_type: 'buy', asset_id: x.asset_id, quantity: x.units, unit_price: x.price, fee: x.fee, tx_date: todayISO(), record_price: true }, onDone: reload }) }, 'ثبت پس از خرید') : null) },
-    ], r.rows)));
+    ], r.rows, { compact: true })));
     out.append(h('h2', { class: 'section-title' }, 'مبلغ لازم در هر پلتفرم'));
     out.append(h('div', { class: 'grid cols-3' }, r.by_platform.map((p) => kpi({ label: p.platform, value: money(p.amount) }))));
     out.append(h('div', { style: { marginTop: '16px' } }, notice(r.disclaimer, 'info')));

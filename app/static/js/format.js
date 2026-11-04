@@ -107,5 +107,9 @@ const _typeLabels = { cash: 'نقد' };
 export const ASSET_TYPE_LABEL = new Proxy(_typeLabels, { get: (t, k) => (typeof k === 'string' ? (t[k] ?? k) : t[k]) });
 export function setAssetTypes(list) { Object.keys(_typeLabels).forEach((k) => delete _typeLabels[k]); _typeLabels.cash = 'نقد'; (list || []).forEach((t) => { _typeLabels[t.key] = t.label; }); }
 export const PROVIDER_STATUS = { ok: ['سالم', 'ok'], error: ['خطا', 'bad'], unknown: ['آزمایش‌نشده', 'warn'], disabled: ['غیرفعال', ''], archived: ['بایگانی', ''] };
-export const REASON_LABEL = { no_price: 'قیمتی ثبت نشده', stale: 'قیمت قدیمی', currency_mismatch: 'ناهم‌خوانی واحد پول', no_fx: 'نرخ ارز ثبت نشده', stale_fx: 'نرخ ارز قدیمی' };
+export const REASON_LABEL = { no_price: 'قیمتی ثبت نشده', stale: 'قیمت قدیمی', currency_mismatch: 'ناهم‌خوانی واحد پول', no_fx: 'نرخ ارز ثبت نشده', stale_fx: 'نرخ ارز قدیمی', conflict: 'اختلاف منابع' };
+// وضعیت کیفیت قیمت (لایهٔ کنترل کیفیت) و منشأ قیمت
+export const PRICE_STATUS = { valid: ['معتبر', 'ok'], stale: ['قدیمی', 'warn'], invalid: ['نامعتبر', 'bad'], manual: ['دستی', 'gold'], missing: ['ناموجود', ''], conflict: ['اختلاف منابع', 'bad'], pending: ['در انتظار تأیید', 'warn'] };
+export const ORIGIN = { manual: ['دستی', 'gold'], online: ['آنلاین', 'blue'] };
+export const FLAG_LABEL = { jump: 'تغییر شدید نسبت به قیمت قبلی', time_lag: 'فاصلهٔ زیاد زمان منبع با زمان دریافت', no_source_time: 'منبع زمان قیمت را اعلام نکرده (زمان دریافت جایگزین شد)', future_time: 'زمان قیمت در آینده است', stale: 'قیمت قدیمی', non_positive: 'قیمت صفر، منفی یا نامعتبر', unit_converted: 'واحد قیمت تبدیل شد' };
 export const STATUS_LABEL = { paid: 'پرداخت‌شده', extra: 'اضافه‌واریزی', partial: 'ناقص', partial_overdue: 'ناقص و عقب‌افتاده', overdue: 'عقب‌افتاده', due: 'موعد امروز', upcoming: 'در انتظار' };

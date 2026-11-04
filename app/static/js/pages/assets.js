@@ -3,7 +3,7 @@ import { state, typeInfo } from '../state.js';
 import { reload, reloadAll } from '../app.js';
 import { badge, clear, confirmDialog, formModal, h, icon, modal, notice, pageHead, table, toast, typeDot, kpi } from '../ui.js';
 import { chartCard, lineConfig, COLORS } from '../charts.js';
-import { money, num, pct, signedPct, signedMoney, pnlClass, units, ASSET_TYPE_LABEL, REASON_LABEL, TYPE_LABEL, fmtDate, fmtDateTime, PROVIDER_STATUS } from '../format.js';
+import { money, num, pct, signedPct, signedMoney, pnlClass, units, ASSET_TYPE_LABEL, REASON_LABEL, TYPE_LABEL, fmtDate, fmtDateTime, PROVIDER_STATUS, ORIGIN } from '../format.js';
 import { depList, optionsFrom, pager, purgeFlow, toolbar } from '../listkit.js';
 import { loadProviders, sourcesEditor } from '../sourceseditor.js';
 import { openTxForm } from './_txform.js';
@@ -186,7 +186,7 @@ const SORTS = [['order', 'ترتیب پیش‌فرض'], ['name', 'نام (الف
 function priceCell(a) {
   const lp = a.latest_price;
   if (!lp) return badge(a.sources?.length ? 'دریافت نشده' : 'بدون قیمت', 'warn');
-  return h('div', null, h('b', null, money(lp.price, 2, false)), lp.currency !== 'IRT' ? ` ${lp.currency}` : '', h('div', null, lp.stale ? badge(`قدیمی (${num(lp.age_days)} روز)`, 'warn') : badge(lp.age_days === 0 ? 'امروز' : `${num(lp.age_days)} روز پیش`, 'ok')));
+  return h('div', null, h('b', null, money(lp.price, 2, false)), lp.currency !== 'IRT' ? ` ${lp.currency}` : '', h('div', null, badge(ORIGIN[lp.origin]?.[0] || '', ORIGIN[lp.origin]?.[1] || ''), ' ', lp.stale ? badge(`قدیمی (${num(lp.age_days)} روز)`, 'warn') : badge(lp.age_days === 0 ? 'امروز' : `${num(lp.age_days)} روز پیش`, 'ok')));
 }
 
 const statusBadge = (a) => (a.is_archived ? badge('بایگانی‌شده') : (a.is_active ? badge('فعال', 'ok') : badge('غیرفعال', 'warn')));
@@ -258,7 +258,7 @@ async function renderDetail(root, id) {
     kv('واحد سنجش', a.unit), kv('بازار', a.market || '—'), kv('اعشار مجاز', num(a.decimals)), kv('حداقل خرید', Number(a.min_quantity) ? units(a.min_quantity) : '—'),
     ...extraKv,
     kv('تعداد واحد', units(p.units)), kv('میانگین قیمت خرید', p.avg_cost == null ? '—' : money(p.avg_cost, 2)), kv('مجموع مبلغ خرید', money(p.total_bought)), kv('بهای تمام‌شده باقیمانده', money(p.cost_basis)),
-    kv('قیمت روز', q?.ok ? `${money(q.price, 2)}${q.currency !== 'IRT' ? ` (${num(q.native_price, 4)} ${q.currency})` : ''}` : '— نامعتبر'), kv('ارزش روز', p.value == null ? '—' : money(p.value)),
+    kv('قیمت روز', q?.ok ? `${money(q.price, 2)}${q.currency !== 'IRT' ? ` (${num(q.native_price, 4)} ${q.currency})` : ''}` : (q?.reason === 'no_price' || !q?.last_price ? '— ناموجود' : '— نامعتبر')), kv('ارزش روز', p.value == null ? '—' : money(p.value)),
     kv('سود یا زیان', p.total_pnl == null ? '—' : h('span', { class: pnlClass(p.total_pnl) }, signedMoney(p.total_pnl))), kv('درصد بازدهی', p.return_pct == null ? '—' : h('span', { class: pnlClass(p.return_pct) }, signedPct(p.return_pct))),
     kv(`وزن فعلی در «${a.portfolio.name}»`, p.weight == null ? '—' : pct(p.weight, 2)), kv('وزن هدف', pct(p.target_weight ?? a.target_weight, 2)), kv('اختلاف با وزن هدف', p.deviation_pp == null ? '—' : `${p.deviation_pp > 0 ? '+' : ''}${num(p.deviation_pp, 2)} واحد درصد`),
     kv('تحقق‌یافته', h('span', { class: pnlClass(p.realized) }, signedMoney(p.realized))), kv('تحقق‌نیافته', p.unrealized == null ? '—' : h('span', { class: pnlClass(p.unrealized) }, signedMoney(p.unrealized))), kv('سود نقدی', money(p.dividends)), kv('کارمزدها', money(p.fees)))));

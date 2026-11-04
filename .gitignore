@@ -10,3 +10,5 @@ data/logs/
 data/exports/
 *.egg-info/
 data/.secret_key
+
+tests/frontend/node_modules/

@@ -39,8 +39,8 @@ export async function render(root) {
       { label: 'مبلغ نهایی', class: 'num', render: (t) => h('b', { class: ['deposit', 'sell', 'dividend'].includes(t.tx_type) ? 'pos' : ['withdrawal', 'buy', 'fee'].includes(t.tx_type) ? 'neg' : '' }, money(t.total_amount)) },
       { label: 'توضیحات', class: 'wrap', render: (t) => t.note || '' },
       { label: '', render: (t) => h('div', { class: 'row-actions' },
-        h('button', { class: 'icon-btn', title: 'ویرایش', onclick: () => openTxForm({ tx: t, onDone: () => load() }) }, icon('edit')),
-        h('button', { class: 'icon-btn', title: 'حذف', onclick: () => del(t) }, icon('trash'))) },
+        h('button', { class: 'icon-btn', title: 'ویرایش', 'aria-label': 'ویرایش تراکنش', onclick: () => openTxForm({ tx: t, onDone: () => load() }) }, icon('edit')),
+        h('button', { class: 'icon-btn', title: 'حذف', 'aria-label': 'حذف تراکنش', onclick: () => del(t) }, icon('trash'))) },
     ], loaded, { empty: 'هنوز تراکنشی ثبت نشده است. با دکمه «تراکنش جدید» شروع کنید.' }));
     clear(moreBox);
     if (loaded.length < res.total) moreBox.append(h('button', { class: 'btn', onclick: () => load(false) }, `نمایش بیشتر (${num(res.total - loaded.length)} مورد دیگر)`));

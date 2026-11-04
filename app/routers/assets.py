@@ -35,7 +35,7 @@ def latest_price_info(db: Session, asset_id: int, max_age_days: int) -> dict | N
     if p is None:
         return None
     age = (clock.now_local().date() - p.recorded_at.date()).days
-    return {"price": p.price, "currency": p.currency, "recorded_at": p.recorded_at, "source": p.source,
+    return {"price": p.price, "currency": p.currency, "recorded_at": p.recorded_at, "source": p.source, "origin": p.origin,
             "age_days": age, "stale": age > max_age_days}
 
 

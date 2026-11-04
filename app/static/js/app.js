@@ -1,6 +1,6 @@
 // نقطه ورود رابط کاربری: مسیریابی، منو و بارگذاری صفحات
 import { refreshMeta, setPortfolio, state } from './state.js';
-import { clear, closeAllModals, h, icon, loadingBox, notice } from './ui.js';
+import { clear, closeAllModals, h, icon, installDigitFix, loadingBox, notice } from './ui.js';
 import { destroyAll, setupCharts } from './charts.js';
 import { fmtDate, todayISO } from './format.js';
 
@@ -16,6 +16,7 @@ const ROUTES = [
   { path: 'risk', title: 'مدیریت ریسک', icon: 'shield', load: () => import('./pages/risk.js') },
   { path: 'reports', title: 'گزارش‌ها', icon: 'report', load: () => import('./pages/reports.js') },
   { path: 'sources', title: 'منابع قیمت', icon: 'sources', load: () => import('./pages/sources.js') },
+  { path: 'intelligence', title: 'مرکز هوشمندی قیمت‌ها', icon: 'pulse', load: () => import('./pages/intelligence.js') },
   { path: 'prices', title: 'قیمت‌ها و نرخ ارز', icon: 'price', load: () => import('./pages/prices.js') },
   { path: 'settings', title: 'تنظیمات', icon: 'settings', load: () => import('./pages/settings.js') },
 ];
@@ -28,7 +29,7 @@ let seq = 0;
 function buildNav() {
   const nav = document.getElementById('nav');
   clear(nav);
-  ROUTES.forEach((r) => nav.append(h('a', { href: `#/${r.path}`, 'data-path': r.path }, icon(r.icon, 19), h('span', null, r.title))));
+  ROUTES.forEach((r) => nav.append(h('a', { href: `#/${r.path}`, 'data-path': r.path, onclick: () => setMenu(false) }, icon(r.icon, 19), h('span', null, r.title))));
 }
 function setMenu(open) {
   sidebar.classList.toggle('open', open);
@@ -75,6 +76,7 @@ function buildSwitcher() {
 }
 
 async function boot() {
+  installDigitFix();
   setupCharts();
   document.getElementById('menu-btn').append(icon('menu', 22));
   document.getElementById('menu-btn').addEventListener('click', () => setMenu(!sidebar.classList.contains('open')));

@@ -2,7 +2,7 @@ import { api, qs } from '../api.js';
 import { state } from '../state.js';
 import { reload } from '../app.js';
 import { badge, confirmDialog, formModal, h, icon, notice, pageHead, table, toast } from '../ui.js';
-import { REASON_LABEL, fmtDateTime, money, num, units } from '../format.js';
+import { FLAG_LABEL, ORIGIN, REASON_LABEL, fmtDateTime, money, num, units } from '../format.js';
 
 export async function openPriceForm({ asset_id = null, onDone } = {}) {
   const assets = (await api.get('/api/assets')).assets;
@@ -60,6 +60,7 @@ export async function render(root) {
   root.append(h('div', { class: 'card' }, table([
     { label: 'دارایی', render: (r) => r.asset },
     { label: 'وضعیت', render: (r) => (r.ok ? badge('معتبر', 'ok') : badge(REASON_LABEL[r.reason] || 'نامعتبر', 'bad')) },
+    { label: 'منبع', render: (r) => (r.source ? [r.source, ' ', badge(ORIGIN[r.origin]?.[0] || '', ORIGIN[r.origin]?.[1] || '')] : '—') },
     { label: 'قیمت روز', class: 'num', render: (r) => (r.ok ? `${money(r.price, 2)}${r.currency !== 'IRT' ? ` (${num(r.native_price, 4)} ${r.currency})` : ''}` : '—') },
     { label: 'زمان ثبت', render: (r) => fmtDateTime(r.recorded_at || r.last_recorded_at) },
     { label: 'سن قیمت', render: (r) => (r.age_days == null ? '—' : `${num(r.age_days)} روز`) },
@@ -68,10 +69,18 @@ export async function render(root) {
   root.append(h('h2', { class: 'section-title' }, 'تاریخچه قیمت‌ها'));
   root.append(h('div', { class: 'card' }, table([
     { label: 'دارایی', render: (p) => p.asset }, { label: 'قیمت', class: 'num', render: (p) => `${units(p.price)} ${p.currency === 'IRT' ? '' : p.currency}` },
-    { label: 'زمان ثبت', render: (p) => fmtDateTime(p.recorded_at) }, { label: 'منبع', render: (p) => p.source },
+    { label: 'زمان ثبت', render: (p) => fmtDateTime(p.recorded_at) },
+    { label: 'منبع', render: (p) => [p.source, ' ', badge(ORIGIN[p.origin]?.[0] || p.origin, ORIGIN[p.origin]?.[1] || '')] },
+    { label: 'ردپای تبدیل/کیفیت', render: (p) => {
+      const parts = [];
+      if (p.origin === 'online') parts.push(p.raw_price !== null && p.raw_price !== undefined ? `خام: ${units(p.raw_price)} ${p.raw_unit || ''}` : '', p.conversion_note || '');
+      (p.quality_flags || []).forEach((f) => parts.push(FLAG_LABEL[f] || f));
+      const txt = parts.filter(Boolean);
+      return txt.length ? h('span', { class: 'small-text muted', title: p.via?.length ? `مسیر: ${p.via.map((v) => v.provider).join(' ← ')}` : '' }, txt.join(' • ')) : '—';
+    } },
     { label: 'اعتبار', render: (p) => (p.is_valid === false ? h('span', { title: p.validity_note }, badge('نامعتبر', 'bad')) : badge('معتبر', 'ok')) },
-    { label: 'تأیید', render: (p) => h('button', { class: 'btn tiny', onclick: async () => { await api.post(`/api/prices/${p.id}/approve${qs({ approved: !p.is_approved })}`); reload(); } }, p.is_approved ? badge('تأییدشده', 'ok') : badge('در انتظار تأیید', 'warn')) },
-    { label: '', render: (p) => h('button', { class: 'icon-btn', title: 'حذف', onclick: async () => { if (await confirmDialog({ message: 'این قیمت حذف شود؟', danger: true, confirmLabel: 'حذف' })) { await api.del(`/api/prices/${p.id}`); reload(); } } }, icon('trash')) },
+    { label: 'تأیید', render: (p) => h('button', { class: 'btn tiny', disabled: p.is_valid === false && !p.is_approved, title: p.is_valid === false ? 'قیمت نامعتبر قابل تأیید نیست' : '', onclick: async () => { await api.post(`/api/prices/${p.id}/approve${qs({ approved: !p.is_approved })}`); reload(); } }, p.is_approved ? badge('تأییدشده', 'ok') : badge('در انتظار تأیید', 'warn')) },
+    { label: '', render: (p) => h('button', { class: 'icon-btn', title: 'حذف', 'aria-label': 'حذف قیمت', onclick: async () => { if (await confirmDialog({ message: 'این قیمت حذف شود؟', danger: true, confirmLabel: 'حذف' })) { await api.del(`/api/prices/${p.id}`); reload(); } } }, icon('trash')) },
   ], prices, { empty: 'قیمتی ثبت نشده است.' })));
   root.append(h('h2', { class: 'section-title' }, 'نرخ تبدیل ارز', h('small', null, 'برای دارایی‌های خارجی؛ تأثیر نرخ روی ارزش تومانی در صفحه سبد نمایش داده می‌شود')));
   root.append(h('div', { class: 'card' }, table([

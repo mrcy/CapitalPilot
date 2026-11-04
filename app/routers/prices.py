@@ -65,7 +65,9 @@ def current_prices(db: Session = Depends(get_db)):
     out = []
     for a in ds.assets:
         q = book.quote(a, now)
-        out.append({"asset_id": a.id, "asset": a.name, "active": a.active, "currency": a.price_currency, "ok": q.ok,
+        latest = db.scalar(select(m.Price).where(m.Price.asset_id == a.id, m.Price.is_approved.is_(True), m.Price.is_valid.is_(True))
+                           .order_by(m.Price.recorded_at.desc(), m.Price.id.desc()).limit(1))
+        out.append({"source": latest.source if latest else None, "origin": latest.origin if latest else None, "asset_id": a.id, "asset": a.name, "active": a.active, "currency": a.price_currency, "ok": q.ok,
                     "price": q.price_irt, "native_price": q.native_price, "fx_rate": q.fx_rate, "recorded_at": q.recorded_at,
                     "age_days": q.age_days, "reason": q.reason, "reason_text": q.reason_text,
                     "last_price": q.last_price, "last_recorded_at": q.last_recorded_at})
