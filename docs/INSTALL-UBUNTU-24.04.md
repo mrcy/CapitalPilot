@@ -3,9 +3,9 @@
 پشتهٔ هدف: **Ubuntu 24.04 LTS · Python 3.12 · FastAPI + Uvicorn · SQLite (پیش‌فرض) · systemd · Nginx (Reverse Proxy) · Let's Encrypt (HTTPS)**.
 برنامه روی `127.0.0.1` گوش می‌دهد و فقط Nginx از بیرون در دسترس است.
 
-> **صادقانه دربارهٔ آزمون‌ها:** محیط ساخت این بسته Python 3.11 روی Debian 12 بود و Ubuntu 24.04، Python 3.12، systemd واقعی، Nginx، certbot و Docker در آن اجرا نشد.
+> **صادقانه دربارهٔ آزمون‌ها:** محیط ساخت این بسته Python 3.11 روی Debian 12 بود و Ubuntu 24.04، Python 3.12، Nginx، certbot و Docker در آن اجرا نشد (systemd نسخهٔ ۲۵۲ روی Debian 12 در دسترس بود، نه نسخهٔ ۲۵۵ اوبونتو).
 > آنچه آزموده شد: ۱۶۶+ آزمون Python، نصب و به‌روزرسانی و بازیابی با `install.sh`/`update.sh`/`restore.sh` روی کاربر و مسیرهای واقعی با یک `systemctl` شبیه‌ساز،
-> بازگشت خودکار هنگام خطای migration و خطای راه‌اندازی، `systemd-analyze verify` روی واحدها و بررسی اینکه **همهٔ وابستگی‌های قفل‌شده برای Python 3.12 (x86_64 و aarch64) wheel آماده دارند**.
+> بازگشت خودکار هنگام خطای migration و خطای راه‌اندازی، `systemd-analyze verify` روی واحدها، اجرای واقعی واحد سخت‌سازی‌شده با systemd 252 (راه‌اندازی، نوشتن در دیتابیس زیر `ProtectSystem=strict`، سرویس پشتیبان) و بررسی اینکه **همهٔ وابستگی‌های قفل‌شده برای Python 3.12 (x86_64 و aarch64) wheel آماده دارند**.
 > اگر در اولین نصب خطایی دیدید، خروجی `journalctl -u capitalpilot -n 50` را بررسی کنید.
 
 ## ۰) پیش‌نیازها

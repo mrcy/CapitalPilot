@@ -57,7 +57,7 @@ cd /opt/capitalpilot && sudo ./install.sh --domain capital.example.com --basic-a
 
 ## محدودیت‌ها و نکات صادقانه
 
-* محیط ساخت Python 3.11 روی Debian 12 بود؛ **Python 3.12، Ubuntu 24.04، systemd واقعی، Nginx، certbot و Docker در آن اجرا نشد.** اسکریپت‌ها با کاربر و مسیر واقعی و یک `systemctl` شبیه‌ساز آزموده شدند (نصب، به‌روزرسانی، بازگشت خودکار، پشتیبان رمزنگاری‌شده، بازیابی)، واحدهای systemd با `systemd-analyze verify` سنجیده شدند و وجود wheel برای Python 3.12 بررسی شد.
+* محیط ساخت Python 3.11 روی Debian 12 بود؛ **Python 3.12، Ubuntu 24.04، Nginx، certbot و Docker در آن اجرا نشد.** اسکریپت‌ها با کاربر و مسیر واقعی و یک `systemctl` شبیه‌ساز آزموده شدند (نصب، به‌روزرسانی، بازگشت خودکار، پشتیبان رمزنگاری‌شده، بازیابی)، واحدهای systemd با `systemd-analyze verify` سنجیده و واحد سخت‌سازی‌شدهٔ برنامه با systemd 252 (Debian 12) واقعاً اجرا شد (راه‌اندازی، نوشتن دیتابیس، سرویس پشتیبان؛ systemd 255 اوبونتو آزموده نشد) و وجود wheel برای Python 3.12 بررسی شد.
 * اتصال زندهٔ TSETMC و Bitpin و سرویس‌های ایرانی آزموده نشد؛ سرور خارج از ایران ممکن است مسدود شود (`docs/PRICE-SOURCES.md`).
 * `raw.githubusercontent.com` از محیط ساخت در دسترس نبود؛ پردازش Iran Market Data با نمونهٔ واقعی ذخیره‌شده آزموده شد.
 * فقط یک worker پشتیبانی می‌شود (زمان‌بند داخل فرایند است).
