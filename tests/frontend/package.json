@@ -1,0 +1,14 @@
+{
+  "name": "capitalpilot-frontend-tests",
+  "private": true,
+  "type": "module",
+  "description": "تست‌های رابط کاربری: واحد (node:test) و سرتاسری (Puppeteer). اجرا: pytest tests/test_frontend.py یا npm test",
+  "scripts": {
+    "test": "node --test --test-concurrency=1",
+    "test:unit": "node --test format.test.mjs"
+  },
+  "devDependencies": {
+    "@sparticuz/chromium": "^153.0.0",
+    "puppeteer-core": "^25.16.0"
+  }
+}

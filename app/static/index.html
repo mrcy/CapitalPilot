@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#070d1c">
+  <title>CapitalPilot | کنترل سرمایه، تصمیم هوشمندانه</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="/static/vendor/fonts/Vazirmatn-Variable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+  <a class="skip" href="#view">پرش به محتوا</a>
+  <div class="app" id="app">
+    <aside class="sidebar" id="sidebar" aria-label="منوی اصلی">
+      <div class="brand">
+        <svg viewBox="0 0 32 32" width="34" height="34" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6f86ff"/><stop offset="1" stop-color="#2fd29a"/></linearGradient></defs><rect width="32" height="32" rx="9" fill="url(#lg)"/><path d="M7 21l6-7 4 4 8-10" fill="none" stroke="#071024" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div><strong>CapitalPilot</strong><small>کنترل سرمایه، تصمیم هوشمندانه</small></div>
+      </div>
+      <nav id="nav"></nav>
+      <div class="side-foot"><span id="side-date"></span><small>ذخیره اضطراری جدا از سبد است.</small></div>
+    </aside>
+    <div class="scrim" id="scrim"></div>
+    <div class="main">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="menu-btn" aria-label="باز کردن منو" aria-controls="sidebar"></button>
+        <div class="top-title" id="top-title"></div>
+        <button class="gs-trigger" id="gs-trigger" type="button" aria-label="جست‌وجوی سراسری بازار (Ctrl+K)" aria-expanded="false" data-testid="gs-trigger"></button>
+        <label class="pf-switch" id="pf-wrap" title="سبد فعال"><span class="sr">سبد</span><select id="pf-switch" aria-label="انتخاب سبد سرمایه‌گذاری"></select></label>
+        <div class="top-meta" id="top-meta"></div>
+      </header>
+      <main id="view" tabindex="-1"></main>
+    </div>
+  </div>
+  <script src="/static/vendor/chart.umd.min.js"></script>
+  <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>
