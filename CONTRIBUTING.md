@@ -4,7 +4,7 @@ Thank you for taking an interest in CapitalPilot.
 
 ## Before submitting code
 
-**Licensing is not yet configured.** This repository currently has no `LICENSE` file. Until the maintainer adds an explicit open-source license and contribution terms, please do not submit patches that assume the project is already open source. Bug reports, reproducible test cases, documentation feedback, and feature discussions are welcome.
+CapitalPilot is distributed under the [MIT License](LICENSE). By submitting a contribution, you confirm that you have the right to submit it and agree that your contribution may be distributed under the project's MIT License. Bug reports, reproducible test cases, documentation feedback, and feature discussions are welcome.
 
 ## Reporting a bug
 
