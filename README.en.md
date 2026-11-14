@@ -113,4 +113,4 @@ Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue or propos
 
 ## License
 
-No license file is currently present in this repository. Until the maintainer selects and adds an open-source license, the source code should **not** be assumed to be available for reuse, redistribution, or modification. See [GitHub's licensing guidance](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository).
+CapitalPilot is distributed under the [MIT License](LICENSE). You may use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the software, subject to the conditions in the license text. The software is provided "as is", without warranty.
